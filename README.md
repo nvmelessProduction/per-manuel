@@ -45,7 +45,7 @@ Il programma usa **il tuo account Telegram** (non un bot), quindi legge qualsias
 |---|---|
 | `dry_run` | `true` = scrive nel log cosa farebbe ma **non invia ordini**. Lascialo `true` finché non hai verificato che funziona, poi metti `false` |
 | `lot_mode` | `"risk"` (lotto calcolato sul rischio) oppure `"fixed"` |
-| `risk_percent` | % del saldo rischiata sull'intero segnale (divisa tra le gambe TP1/TP2) |
+| `risk_percent` | % del saldo rischiata sull'intero segnale (divisa tra le gambe TP1/TP2). Se il conto è troppo piccolo per rispettarla, apre comunque il **lotto minimo** del broker |
 | `fixed_lot` | lotto per ogni gamba se `lot_mode = "fixed"` |
 | `max_lot_per_leg` | limite massimo di sicurezza per ogni posizione |
 | `max_tps` | quanti TP usare (es. `1` = una sola posizione sul TP1) |

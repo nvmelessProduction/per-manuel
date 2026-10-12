@@ -81,13 +81,18 @@ class Trader:
             risk_money = balance * float(self.cfg.get("risk_percent", 1.0)) / 100
             loss_per_lot = abs(mt5.order_calc_profit(order_type, sym, 1.0, entry, sl) or 0)
             if loss_per_lot <= 0:
-                raise RuntimeError("Impossibile calcolare il rischio per lotto")
+                log.warning("Impossibile calcolare il rischio per lotto -> uso il lotto minimo %s", info.volume_min)
+                return info.volume_min
             per_leg = risk_money / loss_per_lot / legs
         else:
             per_leg = float(self.cfg.get("fixed_lot", 0.01))
         per_leg = min(per_leg, float(self.cfg.get("max_lot_per_leg", 1.0)), info.volume_max)
         per_leg = math.floor(per_leg / step + 1e-9) * step
-        return round(max(per_leg, info.volume_min), 8)
+        if per_leg < info.volume_min:
+            log.warning("Il rischio impostato richiederebbe meno del lotto minimo -> apro il lotto minimo %s "
+                        "(il rischio reale sarà più alto)", info.volume_min)
+            per_leg = info.volume_min
+        return round(per_leg, 8)
 
     def _send(self, request: dict):
         if self.dry_run:
