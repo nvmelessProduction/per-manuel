@@ -19,27 +19,15 @@ Gli aggiornamenti vengono applicati al segnale a cui il messaggio **risponde** (
 
 👉 Guida passo-passo completa: [INSTALLAZIONE.md](INSTALLAZIONE.md)
 
-1. Installa **Python 3.11+** da python.org (spunta "Add Python to PATH").
+1. Installa **Python 3.12 (64-bit)** da python.org (spunta "Add Python to PATH").
 2. Installa e apri **MetaTrader 5**, fai login sul conto e attiva il pulsante **Algo Trading**.
-3. Nella cartella del progetto:
-   ```
-   pip install -r requirements.txt
-   ```
-4. Vai su <https://my.telegram.org> → *API development tools* → crea un'app e copia `api_id` e `api_hash`.
-5. Copia `config.example.json` in `config.json` e compila:
-   - `telegram.api_id`, `telegram.api_hash`
-   - `telegram.channel`: ID numerico, `@username`, oppure parte del nome del canale
-6. Primo avvio (chiede numero di telefono e codice Telegram, poi resta salvato nel file `.session`):
-   ```
-   python bot.py --list
-   ```
-   Mostra tutti i canali con il loro ID: copia l'ID del canale dei segnali in `telegram.channel`.
-7. Avvia:
-   ```
-   python bot.py
-   ```
+3. Nella cartella del progetto: `pip install -r requirements.txt`
+4. Su Telegram crea un bot con **@BotFather** (`/newbot`), copia il token e aggiungi il bot come **amministratore** del canale.
+5. Copia `config.example.json` in `config.json` e compila `telegram.bot_token` e `telegram.channel`
+   (ID numerico del canale, es. `-1001234567890`: lo vedi nell'indirizzo di web.telegram.org o con `python bot.py --list`).
+6. Avvia con `avvia.bat` (oppure `python bot.py`).
 
-Il programma usa **il tuo account Telegram** (non un bot), quindi legge qualsiasi canale a cui sei iscritto.
+Se non sei admin del canale puoi usare un account Telegram iscritto al posto del bot (`api_id`/`api_hash`, vedi fondo di INSTALLAZIONE.md).
 
 ## Configurazione (`config.json` → `trading`)
 
@@ -65,7 +53,7 @@ In `mt5` puoi lasciare tutto vuoto se il terminale è già aperto e loggato; alt
 
 - `bot.log`: log completo di messaggi ricevuti e ordini
 - `state.json`: collegamento tra messaggi e ticket MT5 (non cancellarlo con posizioni aperte)
-- `*.session`: login Telegram (**non condividerlo**: dà accesso al tuo account)
+- `*.session`: solo in modalità account, login Telegram (**non condividerlo**: dà accesso al tuo account)
 
 ## Test del parser
 

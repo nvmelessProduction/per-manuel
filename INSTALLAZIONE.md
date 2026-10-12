@@ -3,7 +3,7 @@
 Tempo richiesto: circa 30 minuti. Serve:
 - una VPS Windows (Windows Server 2019/2022 o Windows 10/11)
 - il conto del broker (meglio **demo** per le prove)
-- il telefono con Telegram (per ricevere il codice di accesso)
+- essere amministratore del canale Telegram dei segnali
 
 ---
 
@@ -21,7 +21,7 @@ Tempo richiesto: circa 30 minuti. Serve:
    - *Strumenti → Opzioni → Expert Advisors* → spunta **"Consenti trading algoritmico"** → OK
    - nella barra in alto il pulsante **Algo Trading** deve essere **verde**
 4. Controlla il nome dell'oro dal tuo broker: *Visualizza → Market Watch* (Ctrl+M), tasto destro → *Simboli*, cerca "XAU" o "GOLD".
-   Segnati il nome esatto (es. `XAUUSD`, `XAUUSD.m`, `GOLD`, `XAUUSD+`): servirà al punto 6.
+   Segnati il nome esatto (es. `XAUUSD`, `XAUUSD.m`, `GOLD`, `XAUUSD+`): servirà al punto 7.
 5. **Lascia MT5 sempre aperto e loggato.**
 
 ## 3. Installare Python
@@ -52,14 +52,18 @@ pip install -r requirements.txt
 ```
 Deve finire con *Successfully installed … telethon … MetaTrader5 …*.
 
-## 6. Chiavi Telegram (api_id e api_hash)
+## 6. Creare il bot Telegram e renderlo amministratore del canale
 
-1. Vai su <https://my.telegram.org>, inserisci il tuo numero col prefisso (es. `+393331234567`).
-2. Il codice arriva **dentro l'app Telegram** (non via SMS): inseriscilo.
-3. Clicca **API development tools** e compila:
-   - *App title*: `copier` · *Short name*: `copier` · *Platform*: Desktop · il resto vuoto
-4. Clicca *Create application* e copia **api_id** (un numero) e **api_hash** (una stringa lunga).
-   Non darli a nessuno.
+Il programma legge il canale tramite un **bot** che è amministratore del canale (serve essere proprietari del canale).
+
+1. In Telegram cerca **@BotFather** (con la spunta blu) e premi *Avvia*.
+2. Scrivi `/newbot`:
+   - nome: ad esempio `SeersFX Copier`
+   - username: deve finire con `bot`, ad esempio `seersfx_copier_bot`
+3. BotFather risponde con il **token**, una stringa tipo `7123456789:AAH...`. Copialo.
+   **Non darlo a nessuno**: chi lo ha può leggere il canale tramite il bot.
+4. Apri il canale → nome del canale in alto → **Amministratori → Aggiungi amministratore** → cerca lo username del bot → aggiungilo.
+   Puoi **togliere tutti i permessi** (pubblicare, modificare, ecc.): al bot serve solo essere admin per ricevere i messaggi.
 
 ## 7. Configurare il programma
 
@@ -73,10 +77,9 @@ Modifica e salva (Ctrl+S):
 
 ```
 "telegram": {
-  "api_id": 1234567,                       <- il tuo api_id (numero, senza virgolette)
-  "api_hash": "abcdef0123456789...",       <- il tuo api_hash (tra virgolette)
-  "session_name": "seersfx",
-  "channel": "SEERS.FX"                    <- lo cambierai al punto 8 con l'ID
+  "bot_token": "7123456789:AAH...",        <- il token di BotFather (tra virgolette)
+  "channel": -1001234567890,               <- l'ID del canale (punto 8), numero senza virgolette
+  ...                                      <- il resto lascialo com'è
 },
 ```
 
@@ -100,26 +103,22 @@ Se preferisci che il programma faccia il login da solo:
 
 > Attenzione alle virgole e alle virgolette: se il JSON è sbagliato il programma si ferma con un errore che indica la riga.
 
-## 8. Primo avvio e scelta del canale
+## 8. Trovare l'ID del canale
 
+**Modo 1 (il più semplice):** apri il canale su <https://web.telegram.org> dal computer.
+L'indirizzo finisce con l'ID, ad esempio `web.telegram.org/a/#-1001234567890`.
+Copia il numero **con il segno meno** in `"channel"`.
+
+**Modo 2:** con il token già inserito nel config:
 ```
 cd C:\copier
 python bot.py --list
 ```
-1. Chiede il numero di telefono → scrivilo col prefisso `+39...`
-2. Chiede il codice → arriva nell'app Telegram
-3. Se hai la verifica in due passaggi chiede anche la password di Telegram
-4. Compare l'elenco di chat e canali con il loro ID, ad esempio:
-   ```
-     -1001234567890  canale   SEERS.FX-⚠️📊
-   ```
-5. Copia l'ID del canale dei segnali in `config.json`:
-   ```json
-   "channel": -1001234567890
-   ```
-
-Il login resta salvato nel file `seersfx.session`: non dovrai più inserire il codice.
-**Non condividere questo file**: chi lo ha può entrare nel tuo Telegram.
+Poi pubblica un messaggio qualsiasi nel canale (puoi cancellarlo subito dopo): nella finestra compare
+```
+  -1001234567890  channel   SEERS.FX-⚠️📊
+```
+Copia l'ID in `config.json` e chiudi con Ctrl+C.
 
 ## 9. Prova in modalità dry run
 
@@ -127,14 +126,14 @@ Fai doppio clic su **`avvia.bat`** (oppure `python bot.py` dal Prompt). Nella fi
 ```
 Connesso a MT5: conto 12345678 (NomeBroker-Server), saldo ...
 MODALITÀ DRY RUN: nessun ordine reale verrà inviato
-In ascolto sul canale: SEERS.FX-⚠️📊 (id ...)
+Bot @seersfx_copier_bot in ascolto sul canale -1001234567890
 ```
 Quando arriva un segnale vedrai `Segnale riconosciuto` e le righe `[DRY RUN] order_send …` con lotto, SL e TP che avrebbe usato.
 
-**Per provare subito senza aspettare un segnale:**
-1. In Telegram crea un tuo canale privato di prova.
-2. Rilancia `python bot.py --list`, prendi il suo ID e mettilo in `channel`.
-3. Avvia il bot e incolla nel canale di prova un segnale copiato da SEERS.FX con **livelli vicini al prezzo attuale** (altrimenti viene scartato perché il prezzo è già oltre SL/TP).
+**Per provare subito senza disturbare gli iscritti:**
+1. Crea un canale privato di prova e aggiungi lo stesso bot come amministratore.
+2. Metti l'ID del canale di prova in `channel` (punto 8) e avvia.
+3. Pubblica un segnale nello stesso formato con **livelli vicini al prezzo attuale** (altrimenti viene scartato perché il prezzo è già oltre SL/TP).
 4. Rispondi a quel messaggio con un aggiornamento ("porta lo stop a pareggio") per provare la gestione.
 5. Finite le prove, rimetti l'ID del canale vero.
 
@@ -156,7 +155,7 @@ Quando arriva un segnale vedrai `Segnale riconosciuto` e le righe `[DRY RUN] ord
 ## 12. Aggiornare il programma
 
 Scarica il nuovo ZIP ed estrailo sopra la cartella, **mantenendo** questi file:
-`config.json`, `seersfx.session`, `state.json`.
+`config.json` e `state.json`.
 
 ---
 
@@ -168,7 +167,8 @@ Scarica il nuovo ZIP ed estrailo sopra la cartella, **mantenendo** questi file:
 | `mt5.initialize() fallito` | MT5 non aperto/loggato, oppure Python a 32 bit. Prova a indicare `path`, `login`, `password`, `server` in `config.json` |
 | `Algo Trading è disattivato` / retcode `10027` | Attiva il pulsante **Algo Trading** in MT5 (punto 2.3) |
 | `Simbolo XAUUSD non trovato sul broker` | Imposta `symbol_map` o `symbol_suffix` (punto 7) |
-| `Canale ... non trovato` | Usa l'ID numerico preso con `--list` |
+| Il bot non riceve i messaggi | Il bot deve essere **amministratore** del canale e `channel` deve essere l'ID con il `-100` davanti |
+| `Telegram getMe: ... Unauthorized` | Token del bot sbagliato: ricopialo da @BotFather |
 | `Segnale scartato: prezzo attuale fuori dai livelli` | Normale: il prezzo era già oltre lo SL o il TP1 quando è arrivato il segnale |
 | retcode `10019` | Margine insufficiente per il lotto |
 | retcode `10018` | Mercato chiuso |
@@ -176,3 +176,13 @@ Scarica il nuovo ZIP ed estrailo sopra la cartella, **mantenendo** questi file:
 | `Expecting ',' delimiter` / errore JSON | Errore di sintassi in `config.json` (virgola o virgolette mancanti) |
 
 Tutto quello che succede viene scritto anche in **`bot.log`** nella cartella del programma: in caso di problemi manda quel file.
+
+---
+
+## Alternativa: leggere il canale con un account Telegram (se non sei admin)
+
+Se non puoi aggiungere un bot al canale, il programma può leggere con un account iscritto:
+1. Su <https://my.telegram.org> → *API development tools* crea un'app e copia **api_id** e **api_hash**.
+2. In `config.json` lascia `"bot_token": ""` e compila `"api_id"` (numero) e `"api_hash"`.
+3. Lancia `python bot.py --list`: chiede numero di telefono, codice (arriva nell'app Telegram) ed eventuale password, poi mostra gli ID dei canali.
+4. Il login resta nel file `seersfx.session`: **non condividerlo**, dà accesso all'account.
