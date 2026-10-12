@@ -1,0 +1,36 @@
+{
+  "telegram": {
+    "api_id": 1234567,
+    "api_hash": "INCOLLA_QUI_API_HASH",
+    "session_name": "seersfx",
+    "channel": "SEERS.FX"
+  },
+  "mt5": {
+    "path": null,
+    "login": null,
+    "password": "",
+    "server": ""
+  },
+  "trading": {
+    "dry_run": true,
+    "magic": 260412,
+
+    "lot_mode": "risk",
+    "risk_percent": 1.0,
+    "fixed_lot": 0.01,
+    "max_lot_per_leg": 1.0,
+    "max_tps": 2,
+
+    "symbol_map": { "XAUUSD": "XAUUSD" },
+    "symbol_suffix": "",
+
+    "entry_tolerance_points": 200,
+    "use_pending_orders": true,
+    "pending_expiry_minutes": 120,
+    "deviation_points": 50,
+
+    "breakeven_offset_points": 50,
+    "partial_close_percent": 50,
+    "max_signal_age_minutes": 15
+  }
+}
