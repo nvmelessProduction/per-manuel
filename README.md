@@ -17,6 +17,8 @@ Gli aggiornamenti vengono applicati al segnale a cui il messaggio **risponde** (
 
 ## Installazione sulla VPS Windows
 
+👉 Guida passo-passo completa: [INSTALLAZIONE.md](INSTALLAZIONE.md)
+
 1. Installa **Python 3.11+** da python.org (spunta "Add Python to PATH").
 2. Installa e apri **MetaTrader 5**, fai login sul conto e attiva il pulsante **Algo Trading**.
 3. Nella cartella del progetto:
