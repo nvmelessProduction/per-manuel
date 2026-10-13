@@ -28,7 +28,10 @@ def title(t: str) -> None:
 
 
 def ask(prompt: str, default=None, secret: bool = False) -> str:
-    hint = f" [{default}]" if default not in (None, "") and not secret else ""
+    if default in (None, ""):
+        hint = ""
+    else:
+        hint = " [INVIO = quella salvata]" if secret else f" [{default}]"
     while True:
         v = (getpass.getpass(f"{prompt}{hint}: ") if secret else input(f"{prompt}{hint}: ")).strip()
         if v:
@@ -178,7 +181,7 @@ def setup_mt5(old: dict, terminal: str | None):
 
     while True:
         login = int(ask("Numero del conto (login)", old.get("login")))
-        password = ask("Password del conto (mentre scrivi non si vede nulla, è normale)", secret=True)
+        password = ask("Password del conto (mentre scrivi non si vede nulla, è normale)", old.get("password"), secret=True)
         server = ask("Server (es. ICMarketsSC-Demo)", old.get("server"))
         print("\nAvvio MetaTrader 5 e faccio il login, attendi circa 30 secondi...")
         start_terminal_with_login(path, login, password, server)
@@ -222,21 +225,31 @@ def setup_trading(mt5, old: dict, hedging: bool) -> dict:
     tick = mt5.symbol_info_tick(gold)
 
     title("4/4  RISCHIO E MODALITÀ")
-    tps = 2
+    options = [
+        "1 posizione con TP al TP2: al TP1 chiude una parte (es. 50%) e mette lo stop a PAREGGIO",
+        "1 posizione con TP al TP2: al TP1 chiude una parte (es. 50%) e avvia un TRAILING STOP",
+    ]
     if hedging:
-        tps = ask_choice("Quante posizioni aprire per ogni segnale?",
-                         ["2 posizioni (una chiude al TP1, l'altra al TP2)",
-                          "1 posizione (chiude al TP1, rischio dimezzato)"], 1)
-        tps = 2 if tps == 1 else 1
-    else:
-        tps = 1
+        options.append("2 posizioni separate: una chiude al TP1, l'altra al TP2")
+    old_mode = {"tp1_be": 1, "tp1_trailing": 2, "two_positions": 3}.get(old.get("management"), 1)
+    choice = ask_choice("Come gestire ogni segnale?", options, old_mode if old_mode <= len(options) else 1)
+    management = {1: "tp1_be", 2: "tp1_trailing", 3: "two_positions"}[choice]
+    extra = {"management": management}
+    tps = 2 if management == "two_positions" else 1
+    if management != "two_positions":
+        extra["partial_close_percent"] = ask_number("Percentuale da chiudere al TP1", old.get("partial_close_percent", 50), 1, 99)
+        print("  (per poter chiudere una parte, il lotto minimo aperto sarà 0,02)")
+    if management == "tp1_trailing":
+        print("  Nota: sull'oro 1 pip = 0,10$  ->  3 pips = 0,30$ (molto stretto, circa lo spread).")
+        extra["trailing_pips"] = ask_number("Distanza del trailing stop in pips", old.get("trailing_pips", 3), 0.5, 1000)
 
     balance = mt5.account_info().balance
     if sym and tick and tick.bid:
         loss = abs(mt5.order_calc_profit(mt5.ORDER_TYPE_SELL, gold, sym.volume_min, tick.bid, tick.bid + 8) or 0)
         if loss:
-            print(f"\nEsempio: con uno stop loss di 8$ (come nei segnali del canale) il lotto minimo "
-                  f"{sym.volume_min} rischia circa {loss:.2f} per posizione = {loss * tps / balance * 100:.1f}% del conto.")
+            print(f"\nEsempio: con uno stop loss di 8$ (come nei segnali del canale) il minimo che il bot apre "
+                  f"({2 * sym.volume_min:g} lotti in totale) rischia circa {2 * loss:.2f} = "
+                  f"{2 * loss / balance * 100:.1f}% del conto.")
 
     mode = ask_choice("\nCome calcolo il lotto?",
                       ["Percentuale del conto (consigliato)", "Lotto fisso"], 1)
@@ -256,6 +269,7 @@ def setup_trading(mt5, old: dict, hedging: bool) -> dict:
     if real == 2 and not ask_yes("Confermi la modalità REALE?", False):
         real = 1
 
+    trading.update(extra)
     trading.update({
         "dry_run": real == 1,
         "max_tps": tps,
@@ -272,6 +286,7 @@ DEFAULT_TRADING = {
     "symbol_map": {}, "symbol_suffix": "",
     "entry_tolerance_points": 200, "use_pending_orders": True, "pending_expiry_minutes": 120,
     "deviation_points": 50, "breakeven_offset_points": 50, "partial_close_percent": 50,
+    "management": "tp1_be", "trailing_pips": 3, "trailing_step_pips": 1, "pip_size": None,
     "max_signal_age_minutes": 15,
 }
 
@@ -305,7 +320,12 @@ def main() -> int:
     print(f"  Oro:        {trading['symbol_map']['XAUUSD']}")
     print(f"  Lotto:      " + (f"{trading['risk_percent']}% del conto" if trading["lot_mode"] == "risk"
                                 else f"fisso {trading['fixed_lot']}"))
-    print(f"  Posizioni:  {trading['max_tps']} per segnale")
+    print("  Gestione:   " + {
+        "tp1_be": f"1 posizione, al TP1 chiude il {trading.get('partial_close_percent', 50):g}% e mette a pareggio",
+        "tp1_trailing": f"1 posizione, al TP1 chiude il {trading.get('partial_close_percent', 50):g}% "
+                        f"e trailing stop di {trading.get('trailing_pips', 3):g} pips",
+        "two_positions": "2 posizioni (TP1 e TP2)",
+    }[trading.get("management", "two_positions")])
     print(f"  Modalità:   {'PROVA (nessun ordine reale)' if trading['dry_run'] else 'REALE'}")
     print("\nPer cambiare questi dati in futuro: doppio clic su CONFIGURA.bat")
     return 0

@@ -58,6 +58,11 @@ class Trader:
         # state = {"signals": {msg_id: {"symbol", "side", "tickets": [...], "entry": float}}, "last_signal": msg_id}
         self.state = {"signals": {}, "last_signal": None}
         self._symbol_cache: dict[str, str] = {}
+        # "tp1_be": 1 posizione, al TP1 chiude una parte e mette a pareggio, TP finale = ultimo TP
+        # "tp1_trailing": come sopra ma al posto del pareggio parte un trailing stop
+        # "two_positions": una posizione per ogni TP
+        self.management = trading_cfg.get("management", "two_positions")
+        self.single_mode = self.management in ("tp1_be", "tp1_trailing")
         self._load_state()
 
     # ------------------------------------------------------------------ setup
@@ -126,25 +131,27 @@ class Trader:
             self._symbol_cache[symbol] = found or symbol
         return self._symbol_cache[symbol]
 
-    def _calc_lots(self, sym: str, info, order_type: int, entry: float, sl: float, legs: int) -> float:
+    def _calc_lots(self, sym: str, info, order_type: int, entry: float, sl: float, legs: int,
+                   min_lot: float | None = None) -> float:
         """Lotto per singola gamba (una gamba per ogni TP)."""
         step = info.volume_step
+        min_lot = max(min_lot or 0, info.volume_min)
         if self.cfg.get("lot_mode", "fixed") == "risk":
             balance = mt5.account_info().balance
             risk_money = balance * float(self.cfg.get("risk_percent", 1.0)) / 100
             loss_per_lot = abs(mt5.order_calc_profit(order_type, sym, 1.0, entry, sl) or 0)
             if loss_per_lot <= 0:
-                log.warning("Impossibile calcolare il rischio per lotto -> uso il lotto minimo %s", info.volume_min)
-                return info.volume_min
+                log.warning("Impossibile calcolare il rischio per lotto -> uso il lotto minimo %s", min_lot)
+                return round(min_lot, 8)
             per_leg = risk_money / loss_per_lot / legs
         else:
             per_leg = float(self.cfg.get("fixed_lot", 0.01))
         per_leg = min(per_leg, float(self.cfg.get("max_lot_per_leg", 1.0)), info.volume_max)
         per_leg = math.floor(per_leg / step + 1e-9) * step
-        if per_leg < info.volume_min:
+        if per_leg < min_lot:
             log.warning("Il rischio impostato richiederebbe meno del lotto minimo -> apro il lotto minimo %s "
-                        "(il rischio reale sarà più alto)", info.volume_min)
-            per_leg = info.volume_min
+                        "(il rischio reale sarà più alto)", min_lot)
+            per_leg = min_lot
         return round(per_leg, 8)
 
     def _send(self, request: dict):
@@ -210,9 +217,17 @@ class Trader:
                         msg_id, price, sig.entry_low, sig.entry_high)
             return
 
-        tps = sig.tps[: int(self.cfg.get("max_tps", len(sig.tps)))]
+        single = self.single_mode and len(sig.tps) > 1
+        if single:
+            # Una sola posizione con TP finale; al TP1 la gestisce il manager (parziale + BE/trailing).
+            # Lotto minimo = 2 x minimo del broker, così la chiusura parziale è sempre possibile.
+            tps = [sig.tps[-1]]
+            min_lot = 2 * info.volume_min
+        else:
+            tps = sig.tps[: int(self.cfg.get("max_tps", len(sig.tps)))]
+            min_lot = None
         lots = self._calc_lots(sym, info, order_type if action == mt5.TRADE_ACTION_DEAL else
-                               (mt5.ORDER_TYPE_BUY if buy else mt5.ORDER_TYPE_SELL), entry, sig.sl, len(tps))
+                               (mt5.ORDER_TYPE_BUY if buy else mt5.ORDER_TYPE_SELL), entry, sig.sl, len(tps), min_lot)
         log.info("Segnale %s: %s %s x%d gambe da %.2f lotti @ %s, SL %s, TP %s",
                  msg_id, sig.side, sym, len(tps), lots, entry, sig.sl, tps)
 
@@ -228,7 +243,7 @@ class Trader:
                 "tp": round(tp, digits),
                 "deviation": int(self.cfg.get("deviation_points", 50)),
                 "magic": self.magic,
-                "comment": f"sfx{msg_id}-TP{i}",
+                "comment": f"sfx{msg_id}-TP{len(sig.tps) if single else i}",
                 "type_time": mt5.ORDER_TIME_GTC,
             }
             if action == mt5.TRADE_ACTION_PENDING:
@@ -240,11 +255,13 @@ class Trader:
             res = self._send(req)
             if self._ok(res):
                 tickets.append(res.order)
-                log.info("  TP%d aperto, ticket %s", i, res.order)
+                log.info("  posizione %d/%d aperta, ticket %s", i, len(tps), res.order)
 
         if tickets:
             self.state["signals"][str(msg_id)] = {
-                "symbol": sym, "side": sig.side, "tickets": tickets, "entry": entry, "dry_run": self.dry_run}
+                "symbol": sym, "side": sig.side, "tickets": tickets, "entry": entry, "dry_run": self.dry_run,
+                "mode": self.management if single else "two_positions", "tp1": sig.tps[0],
+                "partial_done": False, "trailing": False, "closed": False}
             self.state["last_signal"] = msg_id
             self._save_state()
 
@@ -296,18 +313,30 @@ class Trader:
             self.ensure_connected()
             pos, orders = self._positions(rec)
             digits = mt5.symbol_info(rec["symbol"]).digits
+            if rec.get("mode") in ("tp1_be", "tp1_trailing"):
+                rec["tp1"] = sig.tps[0]
+                self._save_state()
             items = [(p, True) for p in pos] + [(o, False) for o in orders]
             for item, is_position in items:
                 leg = rec["tickets"].index(item.identifier if is_position else item.ticket) + 1 \
                     if (item.identifier if is_position else item.ticket) in rec["tickets"] else 1
                 tp = sig.tps[min(leg, len(sig.tps)) - 1]
+                if rec.get("mode") in ("tp1_be", "tp1_trailing"):
+                    tp = sig.tps[-1]
+                    if rec.get("partial_done"):
+                        # dopo il TP1 lo stop lo gestisce il bot (pareggio/trailing): aggiorno solo il TP
+                        req_sl = item.sl
+                    else:
+                        req_sl = sig.sl
+                else:
+                    req_sl = sig.sl
                 if is_position:
                     req = {"action": mt5.TRADE_ACTION_SLTP, "symbol": item.symbol, "position": item.ticket}
                 else:
                     req = {"action": mt5.TRADE_ACTION_MODIFY, "order": item.ticket, "price": item.price_open,
                            "type_time": item.type_time, "expiration": item.time_expiration}
-                req.update({"sl": round(sig.sl, digits), "tp": round(tp, digits), "magic": self.magic})
-                log.info("Segnale %s modificato: aggiorno ticket %s -> SL %s TP %s", msg_id, item.ticket, sig.sl, tp)
+                req.update({"sl": round(req_sl, digits), "tp": round(tp, digits), "magic": self.magic})
+                log.info("Segnale %s modificato: aggiorno ticket %s -> SL %s TP %s", msg_id, item.ticket, req_sl, tp)
                 self._send(req)
 
     def apply_update(self, upd: Update, reply_to: int | None) -> None:
@@ -338,6 +367,20 @@ class Trader:
                     log.info("Cancello ordine pendente %s (il trade è già in gestione)", o.ticket)
                     self._cancel_order(o)
 
+            if rec.get("mode") in ("tp1_be", "tp1_trailing"):
+                for p in pos:
+                    if upd.partial_close and not rec.get("partial_done"):
+                        # il canale dice di mettere in sicurezza prima del TP1: stessa gestione del TP1
+                        self._secure(rec, p, "aggiornamento dal canale")
+                    elif upd.breakeven:
+                        self._breakeven(p)
+                    if upd.new_sl is not None and not upd.breakeven:
+                        if rec.get("partial_done"):
+                            self._modify_sl_if_better(p, upd.new_sl)
+                        else:
+                            self._modify_sl(p, upd.new_sl)
+                return
+
             if upd.partial_close and pos:
                 if len(pos) > 1:
                     # chiudo la gamba col TP più vicino
@@ -357,9 +400,120 @@ class Trader:
 
             if upd.breakeven:
                 for p in pos:
-                    off = float(self.cfg.get("breakeven_offset_points", 0)) * mt5.symbol_info(p.symbol).point
-                    buy = p.type == mt5.POSITION_TYPE_BUY
-                    self._modify_sl(p, p.price_open + off if buy else p.price_open - off)
+                    self._breakeven(p)
             elif upd.new_sl is not None:
                 for p in pos:
                     self._modify_sl(p, upd.new_sl)
+
+    # ------------------------------------------------------------------ gestione automatica TP1
+    def pip_size(self, info) -> float:
+        if self.cfg.get("pip_size"):
+            return float(self.cfg["pip_size"])
+        name = info.name.upper()
+        if name.startswith(("XAU", "GOLD")):
+            return 0.1          # oro: 1 pip = 0,10
+        if name.startswith(("XAG", "SILVER")):
+            return 0.01
+        if info.digits in (3, 5):
+            return info.point * 10  # forex: 1 pip = 10 punti
+        return info.point
+
+    def _modify_sl_if_better(self, p, new_sl: float) -> bool:
+        """Sposta lo stop solo se lo migliora (mai indietro)."""
+        buy = p.type == mt5.POSITION_TYPE_BUY
+        if p.sl and ((buy and new_sl <= p.sl) or (not buy and new_sl >= p.sl)):
+            return False
+        res = self._send({
+            "action": mt5.TRADE_ACTION_SLTP, "symbol": p.symbol, "position": p.ticket,
+            "sl": round(new_sl, mt5.symbol_info(p.symbol).digits), "tp": p.tp, "magic": self.magic,
+        })
+        return self._ok(res)
+
+    def _breakeven(self, p) -> None:
+        off = float(self.cfg.get("breakeven_offset_points", 0)) * mt5.symbol_info(p.symbol).point
+        buy = p.type == mt5.POSITION_TYPE_BUY
+        be = p.price_open + off if buy else p.price_open - off
+        if self._modify_sl_if_better(p, be):
+            log.info("Posizione %s: stop a pareggio (%s)", p.ticket, round(be, 5))
+
+    def _partial_close(self, p) -> None:
+        info = mt5.symbol_info(p.symbol)
+        vol = p.volume * float(self.cfg.get("partial_close_percent", 50)) / 100
+        vol = math.floor(vol / info.volume_step + 1e-9) * info.volume_step
+        if vol >= info.volume_min and p.volume - vol >= info.volume_min - 1e-9:
+            log.info("Posizione %s: chiudo %.2f lotti su %.2f", p.ticket, vol, p.volume)
+            self._close_position(p, round(vol, 8))
+        else:
+            log.info("Posizione %s: volume %.2f troppo piccolo per la chiusura parziale", p.ticket, p.volume)
+
+    def _secure(self, rec: dict, p, reason: str) -> None:
+        """TP1: chiusura parziale + pareggio oppure avvio del trailing stop."""
+        log.info("Segnale %s %s (%s): metto in sicurezza", rec["symbol"], p.ticket, reason)
+        self._partial_close(p)
+        rec["partial_done"] = True
+        p = (mt5.positions_get(ticket=p.ticket) or [p])[0]
+        if rec.get("mode") == "tp1_trailing":
+            rec["trailing"] = True
+            log.info("Posizione %s: avvio trailing stop di %s pips", p.ticket, self.cfg.get("trailing_pips", 3))
+            self._trail(p)
+        else:
+            self._breakeven(p)
+        self._save_state()
+
+    def _trail(self, p) -> None:
+        info = mt5.symbol_info(p.symbol)
+        tick = mt5.symbol_info_tick(p.symbol)
+        pip = self.pip_size(info)
+        dist = float(self.cfg.get("trailing_pips", 3)) * pip
+        dist = max(dist, (info.trade_stops_level + 1) * info.point)  # distanza minima imposta dal broker
+        step = float(self.cfg.get("trailing_step_pips", 1)) * pip
+        buy = p.type == mt5.POSITION_TYPE_BUY
+        new_sl = tick.bid - dist if buy else tick.ask + dist
+        if p.sl and ((buy and new_sl < p.sl + step) or (not buy and new_sl > p.sl - step)):
+            return
+        if self._modify_sl_if_better(p, new_sl):
+            log.info("Posizione %s: trailing stop -> %s", p.ticket, round(new_sl, info.digits))
+
+    def manage_positions(self) -> None:
+        """Controlla le posizioni aperte: TP1 raggiunto -> parziale + pareggio/trailing."""
+        changed = False
+        for rec in self.state["signals"].values():
+            if rec.get("mode") not in ("tp1_be", "tp1_trailing") or rec.get("closed") or rec.get("dry_run"):
+                continue
+            pos, orders = self._positions(rec)
+            if not pos and not orders:
+                rec["closed"] = True
+                changed = True
+                continue
+            for p in pos:
+                if not rec.get("partial_done"):
+                    tick = mt5.symbol_info_tick(p.symbol)
+                    buy = p.type == mt5.POSITION_TYPE_BUY
+                    tp1 = rec["tp1"]
+                    if (buy and tick.bid >= tp1) or (not buy and tick.ask <= tp1):
+                        self._secure(rec, p, f"TP1 {tp1} raggiunto")
+                elif rec.get("trailing"):
+                    self._trail(p)
+        if changed:
+            self._save_state()
+
+    def start_manager(self, interval: float = 1.0) -> None:
+        if not self.single_mode:
+            return
+
+        def loop():
+            while True:
+                time.sleep(interval)
+                try:
+                    with self.lock:
+                        if mt5.terminal_info() is not None:
+                            self.manage_positions()
+                except Exception:
+                    log.exception("Errore nella gestione automatica delle posizioni")
+
+        threading.Thread(target=loop, daemon=True, name="manager").start()
+        log.info("Gestione automatica attiva: %s", {
+            "tp1_be": "al TP1 chiude il %s%% e mette a pareggio" % self.cfg.get("partial_close_percent", 50),
+            "tp1_trailing": "al TP1 chiude il %s%% e avvia trailing stop di %s pips" % (
+                self.cfg.get("partial_close_percent", 50), self.cfg.get("trailing_pips", 3)),
+        }[self.management])

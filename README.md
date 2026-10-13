@@ -22,6 +22,7 @@ Legge i segnali dal canale Telegram (es. SEERS.FX) e li apre automaticamente su 
 | `VENDI/COMPRA ORO (XAUUSD)` + zona d'ingresso + SL + TP1/TP2 | Apre **una posizione per ogni TP** (stesso SL). Se il prezzo è già in zona → ordine a mercato, altrimenti ordine limit sul bordo della zona |
 | Segnale **modificato** dopo l'invio | Aggiorna SL/TP delle posizioni già aperte |
 | "metti in sicurezza parte dei profitti" / "parziale" | Chiude la posizione del TP1 (o il `partial_close_percent` se ce n'è solo una) |
+| **Gestione automatica al TP1** (modalità consigliata) | Apre **1 posizione** con TP = TP2 (minimo 0,02 lotti). Quando il prezzo tocca il TP1 chiude il `partial_close_percent` (50%) e poi, a scelta: **stop a pareggio** (`management: "tp1_be"`) oppure **trailing stop** di `trailing_pips` pips (`management: "tp1_trailing"`). Se il canale scrive prima "metti in sicurezza", fa la stessa cosa subito |
 | "porta lo stop a pareggio" / "BE" / "break even" | Sposta lo SL al prezzo d'ingresso (+ `breakeven_offset_points`) |
 | "sposta lo stop a 4165" | Sposta lo SL a 4165 |
 | "chiudi" / "chiudiamo" / "close" | Chiude tutto e cancella i pendenti |

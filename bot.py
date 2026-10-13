@@ -92,6 +92,7 @@ def start_trader(cfg: dict):
     trader.connect()
     if trader.dry_run:
         log.warning("MODALITÀ DRY RUN: nessun ordine reale verrà inviato (trading.dry_run = true)")
+    trader.start_manager()
     return trader
 
 
