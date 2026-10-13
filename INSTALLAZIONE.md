@@ -68,12 +68,12 @@ Tutto **dentro la VPS** (nel Desktop remoto):
 
 1. Copia questo comando (sul tuo PC/telefono, poi lo incolli nella VPS):
    ```
-   powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/nvmelessproduction/per-manuel/telegram-mt5-copier/get.ps1 | iex"
+   curl -L -o "%TEMP%\seers.zip" https://github.com/nvmelessproduction/per-manuel/archive/refs/heads/telegram-mt5-copier.zip && tar -xf "%TEMP%\seers.zip" -C "%TEMP%" && "%TEMP%\per-manuel-telegram-mt5-copier\INSTALLA.bat"
    ```
    > Il Desktop remoto condivide gli appunti: copi sul tuo PC e incolli nella VPS.
    > Se non funziona, apri questa guida su github.com **dal browser della VPS** e copia il comando da lì.
-2. Nella VPS premi **Windows + R** (si apre la finestra *Esegui*).
-3. Incolla il comando (**Ctrl + V**) e premi **INVIO**.
+2. Nella VPS apri il **Prompt dei comandi**: tasto **Windows** → scrivi `cmd` → **INVIO** (si apre una finestra nera).
+3. Incolla il comando (**tasto destro** dentro la finestra, oppure **Ctrl + V**) e premi **INVIO**.
 4. Se compare **"Vuoi consentire a questa app di apportare modifiche?"** → **Sì**.
 
 <details>

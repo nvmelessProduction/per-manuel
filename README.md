@@ -21,9 +21,9 @@ Gli aggiornamenti vengono applicati al segnale a cui il messaggio **risponde** (
 
 In breve:
 1. Crea un bot con **@BotFather** su Telegram e copia il token.
-2. Sulla VPS premi **Windows + R**, incolla e premi INVIO:
+2. Sulla VPS apri il **Prompt dei comandi** (tasto Windows → scrivi `cmd` → INVIO), incolla e premi INVIO:
    ```
-   powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/nvmelessproduction/per-manuel/telegram-mt5-copier/get.ps1 | iex"
+   curl -L -o "%TEMP%\seers.zip" https://github.com/nvmelessproduction/per-manuel/archive/refs/heads/telegram-mt5-copier.zip && tar -xf "%TEMP%\seers.zip" -C "%TEMP%" && "%TEMP%\per-manuel-telegram-mt5-copier\INSTALLA.bat"
    ```
 3. Rispondi alle domande (token, conto MT5, rischio). Il resto è automatico: installa Python, MetaTrader 5
    e le librerie, trova da solo l'ID del canale e il nome dell'oro sul broker, imposta l'avvio automatico
