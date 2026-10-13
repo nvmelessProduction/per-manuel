@@ -1,5 +1,18 @@
 # Telegram → MetaTrader 5 signal copier
 
+## ▶️ Installazione: copia questo comando
+
+Dalla VPS: seleziona la riga qui sotto (o usa il pulsante **copia** a destra del riquadro), apri il **Prompt dei comandi**
+(tasto Windows → scrivi `cmd` → INVIO), **tasto destro** per incollare, poi INVIO:
+
+```
+curl -L -o "%TEMP%\seers.zip" https://github.com/nvmelessproduction/per-manuel/archive/refs/heads/telegram-mt5-copier.zip && tar -xf "%TEMP%\seers.zip" -C "%TEMP%" && "%TEMP%\per-manuel-telegram-mt5-copier\INSTALLA.bat"
+```
+
+Per il **token del bot**: sulla VPS apri <https://web.telegram.org>, accedi col QR code dal telefono,
+apri la chat con @BotFather, copia il token e incollalo (tasto destro) quando il programma lo chiede.
+
+
 Legge i segnali dal canale Telegram (es. SEERS.FX) e li apre automaticamente su MetaTrader 5.
 
 ## Cosa fa
