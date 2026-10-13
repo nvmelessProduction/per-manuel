@@ -162,7 +162,13 @@ if (-not $Reconfigure) {
     Step 7 'Ripartenza dopo un riavvio della VPS'
     Write-Host '    Dopo un riavvio (es. aggiornamenti di Windows) Windows deve fare l''accesso da solo,'
     Write-Host '    altrimenti MetaTrader e il programma restano spenti finche non ti colleghi.'
-    $ans = Read-Host '    Attivo l''accesso automatico? Serve la password di Windows della VPS (S/n)'
+    $winlogon = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -ErrorAction SilentlyContinue
+    if ($winlogon.AutoAdminLogon -eq '1') {
+        Ok 'accesso automatico gia attivo'
+        $ans = 'n'
+    } else {
+        $ans = Read-Host '    Attivo l''accesso automatico? Serve la password di Windows della VPS (S/n)'
+    }
     if ($ans -notmatch '^[nN]') {
         Add-Type -AssemblyName System.DirectoryServices.AccountManagement
         $ctx = New-Object System.DirectoryServices.AccountManagement.PrincipalContext('Machine')

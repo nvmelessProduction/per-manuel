@@ -62,27 +62,31 @@ Vedrai il desktop di Windows Server. Se si apre la finestra **Server Manager**, 
 
 ---
 
-## Passo 3 – Scaricare il programma sulla VPS
+## Passo 3 – Il comando unico
 
 Tutto **dentro la VPS** (nel Desktop remoto):
 
-1. Apri il browser **Microsoft Edge** (icona in basso nella barra).
-   Se chiede impostazioni iniziali, premi *Continua senza dati* / *Conferma*.
-2. Vai su **github.com** e fai **login** (il repository è privato).
-3. Apri: `https://github.com/nvmelessproduction/per-manuel`
-4. In alto a sinistra c'è un pulsante con scritto **`main`**: cliccalo e scegli **`telegram-mt5-copier`**.
-5. Pulsante verde **`<> Code`** → **Download ZIP**.
-6. Apri la cartella **Download** (icona cartella gialla in basso → *Download*).
-7. Tasto destro sul file ZIP → **Estrai tutto…** → **Estrai**.
-
----
-
-## Passo 4 – L'installazione (il "comando unico")
-
-1. Entra nella cartella estratta (si chiama tipo `per-manuel-telegram-mt5-copier`).
-2. **Doppio clic su `INSTALLA.bat`**.
-3. Se compare **"Windows ha protetto il PC"** → clicca **Ulteriori informazioni** → **Esegui comunque**.
+1. Copia questo comando (sul tuo PC/telefono, poi lo incolli nella VPS):
+   ```
+   powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/nvmelessproduction/per-manuel/telegram-mt5-copier/get.ps1 | iex"
+   ```
+   > Il Desktop remoto condivide gli appunti: copi sul tuo PC e incolli nella VPS.
+   > Se non funziona, apri questa guida su github.com **dal browser della VPS** e copia il comando da lì.
+2. Nella VPS premi **Windows + R** (si apre la finestra *Esegui*).
+3. Incolla il comando (**Ctrl + V**) e premi **INVIO**.
 4. Se compare **"Vuoi consentire a questa app di apportare modifiche?"** → **Sì**.
+
+<details>
+<summary>In alternativa, senza comando (scaricando lo ZIP)</summary>
+
+1. Nel browser della VPS apri `https://github.com/nvmelessproduction/per-manuel`
+2. Pulsante **`main`** in alto a sinistra → scegli **`telegram-mt5-copier`**
+3. **`<> Code`** → **Download ZIP** → tasto destro sul file → **Estrai tutto**
+4. Nella cartella estratta, doppio clic su **`INSTALLA.bat`**
+   (se compare "Windows ha protetto il PC" → *Ulteriori informazioni* → *Esegui comunque*)
+</details>
+
+## Passo 4 – L'installazione
 
 Si apre una finestra blu/nera che fa tutto da sola. Ecco cosa succede e cosa ti chiede:
 
@@ -190,7 +194,7 @@ Dopo qualche giorno in PROVA (meglio ancora qualche giorno con ordini veri su co
 | Cambiare rischio, conto, canale, PROVA/REALE | Doppio clic su `C:\SeersCopier\CONFIGURA.bat` |
 | Fermarlo | Chiudi la finestra nera |
 | Riaccenderlo | Riavvia la VPS, oppure doppio clic su `C:\SeersCopier\avvia.bat` |
-| Aggiornarlo a una nuova versione | Scarica il nuovo ZIP (passo 3) e rilancia `INSTALLA.bat`. Alla domanda *"Vuoi rifarla?"* rispondi **N**: tiene la configurazione |
+| Aggiornarlo a una nuova versione | Doppio clic su `C:\SeersCopier\AGGIORNA.bat` (o rilancia il comando del passo 3). Alla domanda *"Vuoi rifarla?"* premi **INVIO** (= no): tiene la configurazione |
 
 Le posizioni aperte dal programma in MT5 hanno il commento `sfx…-TP1` / `sfx…-TP2`.
 Puoi anche chiuderle o modificarle a mano da MT5 senza problemi.
@@ -212,7 +216,7 @@ Puoi anche chiuderle o modificarle a mano da MT5 senza problemi.
 | Errore `10019` | Margine insufficiente |
 | Errore `10018` | Mercato chiuso (weekend) |
 | Errore `10016` | Stop troppo vicini al prezzo per le regole del broker |
-| Dopo un riavvio non riparte | Al passo [7] l'accesso automatico non è stato attivato: rilancia `INSTALLA.bat` e rispondi **S** |
+| Dopo un riavvio non riparte | Al passo [7] l'accesso automatico non è stato attivato: rilancia il comando del passo 3 e rispondi **S** |
 
 In caso di problemi manda il file **`C:\SeersCopier\bot.log`** (o uno screenshot della finestra nera).
 
