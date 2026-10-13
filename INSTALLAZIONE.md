@@ -1,188 +1,223 @@
-# Guida all'installazione sulla VPS Windows
+# Guida all'installazione (automatica)
 
-Tempo richiesto: circa 30 minuti. Serve:
-- una VPS Windows (Windows Server 2019/2022 o Windows 10/11)
-- il conto del broker (meglio **demo** per le prove)
-- essere amministratore del canale Telegram dei segnali
+Questa guida porta da **VPS appena comprata** a **copiatore attivo che apre i trade da solo**.
+L'installazione vera è **un doppio clic**. Le uniche cose da fare a mano sono quelle che solo tu puoi fare:
+creare il bot su Telegram e scrivere i tuoi dati quando il programma te li chiede.
+
+Tempo totale: **circa 20-30 minuti**.
 
 ---
 
-## 1. Collegarsi alla VPS
+## Prima di iniziare: cosa ti serve
 
-1. Dal PC: apri **Connessione Desktop remoto** (cerca "mstsc" nel menu Start). Dal Mac usa l'app *Windows App* (ex Microsoft Remote Desktop).
-2. Inserisci IP, utente e password che ti ha dato il fornitore della VPS.
-3. Quando hai finito, **chiudi la finestra con la X** e **non fare "Disconnetti / Esci"** da Windows: così i programmi restano accesi.
+Tienili a portata di mano, il programma te li chiederà:
 
-## 2. Installare MetaTrader 5
+| Cosa | Dove lo trovi |
+|---|---|
+| **IP, utente e password della VPS** | Mail del fornitore della VPS |
+| **Token del bot Telegram** | Lo crei al passo 2 (2 minuti) |
+| **Numero conto, password e server del conto MT5** | Mail del broker quando hai aperto il conto (meglio un conto **DEMO** per iniziare) |
+| *(facoltativo)* **Link di download di MetaTrader 5 del tuo broker** | Sito del broker, sezione "Piattaforme" / "Scarica MT5" |
+| **Il telefono** con Telegram, per creare il bot e aggiungerlo al canale | — |
 
-1. Sulla VPS scarica MT5 **dal sito del tuo broker** (così ha già i server giusti), oppure da metatrader5.com.
-2. Installalo e fai login: *File → Accedi al conto di trading*, con numero conto, password e server.
-3. Attiva il trading automatico:
-   - *Strumenti → Opzioni → Expert Advisors* → spunta **"Consenti trading algoritmico"** → OK
-   - nella barra in alto il pulsante **Algo Trading** deve essere **verde**
-4. Controlla il nome dell'oro dal tuo broker: *Visualizza → Market Watch* (Ctrl+M), tasto destro → *Simboli*, cerca "XAU" o "GOLD".
-   Segnati il nome esatto (es. `XAUUSD`, `XAUUSD.m`, `GOLD`, `XAUUSD+`): servirà al punto 7.
-5. **Lascia MT5 sempre aperto e loggato.**
+> **Che VPS prendere:** Windows Server 2022 (o 2019), **almeno 2 GB di RAM e 40 GB di disco**.
+> Quella da 1 GB / 25 GB è troppo piccola: Windows da solo la riempie.
 
-## 3. Installare Python
+---
 
-1. Vai su <https://www.python.org/downloads/windows/> e scarica **Python 3.12** → *Windows installer (64-bit)*.
-   (Deve essere a 64 bit, come MT5.)
-2. Nella prima schermata dell'installazione spunta **"Add python.exe to PATH"** → *Install Now*.
-3. Verifica: apri il **Prompt dei comandi** (Start → scrivi `cmd`) e digita:
+## Passo 1 – Collegarsi alla VPS
+
+**Da PC Windows**
+1. Premi il tasto **Windows**, scrivi `Connessione Desktop remoto` e aprila.
+2. In *Computer* scrivi l'**IP** della VPS → **Connetti**.
+3. Inserisci **utente** (di solito `Administrator`) e **password** → OK.
+4. Se compare un avviso sul certificato → **Sì**.
+
+**Da Mac**
+1. Installa dall'App Store **Windows App** (prima si chiamava *Microsoft Remote Desktop*).
+2. **+** → *Aggiungi PC* → scrivi l'IP → salva → doppio clic sul PC → utente e password.
+
+**Da iPhone / Android**: stessa app *Windows App* (o *Remote Desktop*), stessi passaggi. Funziona, ma da computer è molto più comodo.
+
+Vedrai il desktop di Windows Server. Se si apre la finestra **Server Manager**, chiudila.
+
+> ❗ Quando avrai finito, per uscire **chiudi la finestra del Desktop remoto con la X**.
+> **Non** fare *Start → Disconnetti/Esci*: chiuderebbe anche i programmi.
+
+---
+
+## Passo 2 – Creare il bot Telegram (dal telefono)
+
+1. Su Telegram cerca **@BotFather** (con la spunta blu) → **Avvia**.
+2. Scrivi `/newbot`.
+3. Ti chiede il **nome**: scrivi ad esempio `SeersFX Copier`.
+4. Ti chiede lo **username**: deve finire con `bot`, ad esempio `seersfxbot` (se è già preso provane un altro).
+5. BotFather risponde con un messaggio che contiene il **token**, tipo:
    ```
-   python --version
+   7123456789:AAHk3j2...
    ```
-   Deve rispondere `Python 3.12.x`.
+   Tienilo: lo incollerai al passo 4. **Non darlo a nessuno.**
 
-## 4. Scaricare il programma
+*Non serve ancora aggiungerlo al canale: te lo dirà il programma al momento giusto.*
 
-1. Sulla VPS apri il browser e vai su <https://github.com/nvmelessproduction/per-manuel> (fai login su GitHub se il repository è privato).
-2. In alto a sinistra cambia il branch da `main` a **`telegram-mt5-copier`**.
-3. Pulsante verde **Code → Download ZIP**.
-4. Estrai lo ZIP in una cartella semplice, ad esempio `C:\copier`
-   (dentro devono esserci direttamente `bot.py`, `config.example.json`, `avvia.bat`, …).
+---
 
-## 5. Installare le librerie
+## Passo 3 – Scaricare il programma sulla VPS
 
-Nel Prompt dei comandi:
+Tutto **dentro la VPS** (nel Desktop remoto):
+
+1. Apri il browser **Microsoft Edge** (icona in basso nella barra).
+   Se chiede impostazioni iniziali, premi *Continua senza dati* / *Conferma*.
+2. Vai su **github.com** e fai **login** (il repository è privato).
+3. Apri: `https://github.com/nvmelessproduction/per-manuel`
+4. In alto a sinistra c'è un pulsante con scritto **`main`**: cliccalo e scegli **`telegram-mt5-copier`**.
+5. Pulsante verde **`<> Code`** → **Download ZIP**.
+6. Apri la cartella **Download** (icona cartella gialla in basso → *Download*).
+7. Tasto destro sul file ZIP → **Estrai tutto…** → **Estrai**.
+
+---
+
+## Passo 4 – L'installazione (il "comando unico")
+
+1. Entra nella cartella estratta (si chiama tipo `per-manuel-telegram-mt5-copier`).
+2. **Doppio clic su `INSTALLA.bat`**.
+3. Se compare **"Windows ha protetto il PC"** → clicca **Ulteriori informazioni** → **Esegui comunque**.
+4. Se compare **"Vuoi consentire a questa app di apportare modifiche?"** → **Sì**.
+
+Si apre una finestra blu/nera che fa tutto da sola. Ecco cosa succede e cosa ti chiede:
+
+### [1] – [3] Programma, Python e librerie — *automatico*
+Copia il programma in `C:\SeersCopier`, scarica e installa Python e le librerie. Non devi fare niente (2-3 minuti).
+
+### [4] MetaTrader 5
+Ti chiede:
 ```
-cd C:\copier
-pip install -r requirements.txt
+Link (oppure premi INVIO per installare MetaTrader 5 standard):
 ```
-Deve finire con *Successfully installed … telethon … MetaTrader5 …*.
+- Se hai il link del MetaTrader del tuo broker, incollalo (tasto destro = incolla) e premi INVIO.
+- Altrimenti premi solo **INVIO**: installa il MetaTrader 5 standard, va bene per quasi tutti i broker.
 
-## 6. Creare il bot Telegram e renderlo amministratore del canale
+Poi lo scarica e lo installa da solo (2-5 minuti). Si può aprire e chiudere da solo: è normale.
 
-Il programma legge il canale tramite un **bot** che è amministratore del canale (serve essere proprietari del canale).
+### [5] Configurazione — *qui ti fa le domande*
 
-1. In Telegram cerca **@BotFather** (con la spunta blu) e premi *Avvia*.
-2. Scrivi `/newbot`:
-   - nome: ad esempio `SeersFX Copier`
-   - username: deve finire con `bot`, ad esempio `seersfx_copier_bot`
-3. BotFather risponde con il **token**, una stringa tipo `7123456789:AAH...`. Copialo.
-   **Non darlo a nessuno**: chi lo ha può leggere il canale tramite il bot.
-4. Apri il canale → nome del canale in alto → **Amministratori → Aggiungi amministratore** → cerca lo username del bot → aggiungilo.
-   Puoi **togliere tutti i permessi** (pubblicare, modificare, ecc.): al bot serve solo essere admin per ricevere i messaggi.
+**1/4 TELEGRAM**
+1. `Incolla il token del bot` → incolla il token del passo 2, INVIO. Controlla da solo che sia giusto.
+2. Ti dice: **aggiungi il bot come amministratore del canale**. Dal telefono:
+   canale → tocca il **nome del canale** in alto → **Amministratori** → **Aggiungi amministratore** → cerca lo username del bot → conferma.
+   Puoi **togliergli tutti i permessi**: gli basta essere amministratore.
+3. Ti dice: **pubblica un messaggio qualsiasi nel canale**. Scrivi ad esempio `test` nel canale (poi puoi cancellarlo).
+4. Il programma lo vede e chiede: `Ricevuto un messaggio dal canale 'SEERS.FX' ... È quello giusto?` → **s**, INVIO.
+   *(Così trova da solo l'ID del canale.)*
 
-## 7. Configurare il programma
+**2/4 METATRADER 5**
+1. `Numero del conto (login)` → il numero del conto, INVIO.
+2. `Password del conto` → scrivila e INVIO. **Mentre scrivi non compare niente: è normale.**
+3. `Server` → il nome del server **esattamente** come nella mail del broker (es. `ICMarketsSC-Demo`), INVIO.
+4. Apre MetaTrader 5, fa il login e **attiva da solo l'Algo Trading**. Aspetta circa 30 secondi.
+   - Se scrive `Login non riuscito`: ricontrolla i dati e riprova. Se il server non viene trovato, in MetaTrader 5 apri *File → Apri un conto*, cerca il nome del broker, chiudi la finestra, poi torna qui e premi INVIO.
+   - Se ti dice che l'**Algo Trading è spento**: in MetaTrader clicca il pulsante **Algo Trading** in alto finché diventa **verde**, poi INVIO.
 
-Nel Prompt dei comandi:
+**3/4 STRUMENTO**
+- `Il tuo broker chiama l'oro 'XAUUSD'. Corretto?` → di solito **INVIO** (sì). Lo trova da solo.
+
+**4/4 RISCHIO E MODALITÀ**
+1. **Quante posizioni per segnale**: `1` = due posizioni (TP1 e TP2), `2` = una sola (rischio dimezzato).
+   Ti mostra anche un esempio di **quanto rischi** con il lotto minimo: con un conto piccolo leggilo bene.
+2. **Come calcolo il lotto**: `1` = percentuale del conto, `2` = lotto fisso. Poi il valore.
+3. **Lotto massimo di sicurezza**: INVIO va bene.
+4. **Modalità**: `1` = **PROVA** (non apre ordini veri, scrive solo cosa farebbe), `2` = **REALE**.
+   👉 La prima volta scegli **PROVA**.
+
+Alla fine ti mostra un riepilogo.
+
+### [6] Avvio automatico — *automatico*
+Fa in modo che il programma parta da solo ogni volta che Windows si avvia.
+
+### [7] Ripartenza dopo un riavvio della VPS
 ```
-cd C:\copier
-copy config.example.json config.json
-notepad config.json
+Attivo l'accesso automatico? Serve la password di Windows della VPS (S/n)
 ```
-Modifica e salva (Ctrl+S):
+Premi **INVIO** (sì) e scrivi la **password della VPS** (quella del Desktop remoto; anche qui non si vede mentre scrivi).
+Così, se la VPS si riavvia (aggiornamenti di Windows, manutenzione), riparte **tutto da solo**: Windows, MetaTrader 5 e il programma.
 
+### [8] Avvio — *automatico*
+Si apre una **finestra nera** con scritto `Copiatore segnali Telegram - MT5 (NON CHIUDERE)`: è il programma che lavora. **Non chiuderla.**
+Premi INVIO sulla finestra dell'installazione per chiuderla.
+
+✅ **Fatto.** Ora puoi chiudere il Desktop remoto con la **X**.
+
+---
+
+## Passo 5 – Controllare che funzioni
+
+Nella finestra nera devi vedere righe come:
 ```
-"telegram": {
-  "bot_token": "7123456789:AAH...",        <- il token di BotFather (tra virgolette)
-  "channel": -1001234567890,               <- l'ID del canale (punto 8), numero senza virgolette
-  ...                                      <- il resto lascialo com'è
-},
-```
-
-Nella sezione `trading`:
-- `"dry_run": true` → per ora **lascialo true** (prova senza ordini veri)
-- `"symbol_map": { "XAUUSD": "NOME_DEL_TUO_BROKER" }` → il nome visto al punto 2.4 (es. `"GOLD"`).
-  Se il broker aggiunge solo un suffisso puoi usare `"symbol_suffix": ".m"`.
-- `"max_tps": 1` se il conto è piccolo (apre una sola posizione invece di due)
-
-La sezione `mt5` lasciala così se MT5 è già aperto e loggato.
-Se preferisci che il programma faccia il login da solo:
-```json
-"mt5": {
-  "path": "C:\\Program Files\\MetaTrader 5\\terminal64.exe",
-  "login": 12345678,
-  "password": "la_tua_password",
-  "server": "NomeBroker-Server"
-}
-```
-(nel percorso servono le **doppie barre** `\\`).
-
-> Attenzione alle virgole e alle virgolette: se il JSON è sbagliato il programma si ferma con un errore che indica la riga.
-
-## 8. Trovare l'ID del canale
-
-**Modo 1 (il più semplice):** apri il canale su <https://web.telegram.org> dal computer.
-L'indirizzo finisce con l'ID, ad esempio `web.telegram.org/a/#-1001234567890`.
-Copia il numero **con il segno meno** in `"channel"`.
-
-**Modo 2:** con il token già inserito nel config:
-```
-cd C:\copier
-python bot.py --list
-```
-Poi pubblica un messaggio qualsiasi nel canale (puoi cancellarlo subito dopo): nella finestra compare
-```
-  -1001234567890  channel   SEERS.FX-⚠️📊
-```
-Copia l'ID in `config.json` e chiudi con Ctrl+C.
-
-## 9. Prova in modalità dry run
-
-Fai doppio clic su **`avvia.bat`** (oppure `python bot.py` dal Prompt). Nella finestra devi vedere:
-```
-Connesso a MT5: conto 12345678 (NomeBroker-Server), saldo ...
+Connesso a MT5: conto 12345678 (Broker-Server), saldo 1000.00 EUR
 MODALITÀ DRY RUN: nessun ordine reale verrà inviato
-Bot @seersfx_copier_bot in ascolto sul canale -1001234567890
+Bot @seersfxbot in ascolto sul canale -1001234567890
 ```
-Quando arriva un segnale vedrai `Segnale riconosciuto` e le righe `[DRY RUN] order_send …` con lotto, SL e TP che avrebbe usato.
 
-**Per provare subito senza disturbare gli iscritti:**
-1. Crea un canale privato di prova e aggiungi lo stesso bot come amministratore.
-2. Metti l'ID del canale di prova in `channel` (punto 8) e avvia.
-3. Pubblica un segnale nello stesso formato con **livelli vicini al prezzo attuale** (altrimenti viene scartato perché il prezzo è già oltre SL/TP).
-4. Rispondi a quel messaggio con un aggiornamento ("porta lo stop a pareggio") per provare la gestione.
-5. Finite le prove, rimetti l'ID del canale vero.
+Quando nel canale arriva un segnale, compare:
+```
+Segnale riconosciuto: Signal(side='SELL', symbol='XAUUSD', ...)
+[DRY RUN] order_send {...}
+```
+In modalità PROVA non apre niente: controlla solo che lotti, SL e TP siano quelli giusti.
 
-## 10. Passare agli ordini veri
+**Per provare subito senza aspettare un segnale vero** (e senza disturbare gli iscritti):
+crea un canale privato di prova, aggiungi lo stesso bot come amministratore, lancia `CONFIGURA.bat`
+e alla domanda del canale pubblica il messaggio nel canale di prova. Poi pubblica lì un segnale nello stesso formato con
+**prezzi vicini a quello attuale dell'oro**. Finite le prove, rilancia `CONFIGURA.bat` e scegli di nuovo il canale vero.
 
-1. Chiudi il programma (chiudi la finestra).
-2. In `config.json` metti `"dry_run": false`.
-3. Riavvia con `avvia.bat`, **prima su conto demo** per qualche giorno, poi su quello reale.
-4. Le posizioni aperte dal programma hanno commento `sfx<numero>-TP1`, `sfx<numero>-TP2` e magic number `260412`.
+---
 
-## 11. Tenerlo acceso 24/7
+## Passo 6 – Passare agli ordini veri
 
-- Lascia aperti **MT5** e la finestra di **avvia.bat**, poi chiudi il Desktop remoto con la X.
-- Se il programma si chiude per un errore, `avvia.bat` lo riavvia da solo dopo 15 secondi.
-- Avvio automatico: premi `Win+R`, scrivi `shell:startup`, Invio, e mettici un **collegamento** ad `avvia.bat` (e uno a MT5).
-  Nota: parte quando entri in Windows; dopo un riavvio della VPS collegati una volta col Desktop remoto.
-- Consigliato: disattiva i riavvii automatici di Windows Update, o controlla la VPS dopo gli aggiornamenti.
+Dopo qualche giorno in PROVA (meglio ancora qualche giorno con ordini veri su conto **demo**):
+1. Collegati alla VPS.
+2. Doppio clic su **`C:\SeersCopier\CONFIGURA.bat`**.
+3. Rispondi alle domande (INVIO per tenere i valori di prima) e alla fine scegli **2 = REALE**.
+4. Il programma riparte da solo con la nuova configurazione.
 
-## 12. Aggiornare il programma
+---
 
-Scarica il nuovo ZIP ed estrailo sopra la cartella, **mantenendo** questi file:
-`config.json` e `state.json`.
+## Uso quotidiano
+
+| Voglio… | Cosa fare |
+|---|---|
+| Vedere cosa sta facendo | Collegati alla VPS e guarda la finestra nera, oppure apri `C:\SeersCopier\bot.log` |
+| Cambiare rischio, conto, canale, PROVA/REALE | Doppio clic su `C:\SeersCopier\CONFIGURA.bat` |
+| Fermarlo | Chiudi la finestra nera |
+| Riaccenderlo | Riavvia la VPS, oppure doppio clic su `C:\SeersCopier\avvia.bat` |
+| Aggiornarlo a una nuova versione | Scarica il nuovo ZIP (passo 3) e rilancia `INSTALLA.bat`. Alla domanda *"Vuoi rifarla?"* rispondi **N**: tiene la configurazione |
+
+Le posizioni aperte dal programma in MT5 hanno il commento `sfx…-TP1` / `sfx…-TP2`.
+Puoi anche chiuderle o modificarle a mano da MT5 senza problemi.
 
 ---
 
 ## Problemi comuni
 
-| Messaggio | Soluzione |
+| Cosa vedi | Soluzione |
 |---|---|
-| `'python' non è riconosciuto…` | Python installato senza "Add to PATH": reinstallalo spuntando l'opzione |
-| `mt5.initialize() fallito` | MT5 non aperto/loggato, oppure Python a 32 bit. Prova a indicare `path`, `login`, `password`, `server` in `config.json` |
-| `Algo Trading è disattivato` / retcode `10027` | Attiva il pulsante **Algo Trading** in MT5 (punto 2.3) |
-| `Simbolo XAUUSD non trovato sul broker` | Imposta `symbol_map` o `symbol_suffix` (punto 7) |
-| Il bot non riceve i messaggi | Il bot deve essere **amministratore** del canale e `channel` deve essere l'ID con il `-100` davanti |
-| `Telegram getMe: ... Unauthorized` | Token del bot sbagliato: ricopialo da @BotFather |
-| `Segnale scartato: prezzo attuale fuori dai livelli` | Normale: il prezzo era già oltre lo SL o il TP1 quando è arrivato il segnale |
-| retcode `10019` | Margine insufficiente per il lotto |
-| retcode `10018` | Mercato chiuso |
-| retcode `10016` | Stop troppo vicini al prezzo per le regole del broker |
-| `Expecting ',' delimiter` / errore JSON | Errore di sintassi in `config.json` (virgola o virgolette mancanti) |
+| "Windows ha protetto il PC" | *Ulteriori informazioni → Esegui comunque* |
+| `Token non valido` | Ricopia il token da @BotFather (tutto, compresa la parte prima dei `:`) |
+| Il programma non vede il messaggio di prova nel canale | Il bot deve essere **amministratore** del canale (non solo iscritto). Pubblica di nuovo il messaggio |
+| `Login non riuscito` | Numero conto, password o server sbagliati. Il server deve essere identico (maiuscole, trattini) |
+| `Algo Trading è spento` / errore `10027` | In MT5 clicca **Algo Trading** in alto finché è verde |
+| Conto **NETTING** | Il programma usa automaticamente 1 sola posizione per segnale |
+| `Segnale scartato: prezzo attuale fuori dai livelli` | Normale: quando è arrivato il segnale il prezzo era già oltre lo SL o il TP1 |
+| `Il rischio impostato richiederebbe meno del lotto minimo` | Conto piccolo: apre il lotto minimo, il rischio reale è più alto della percentuale scelta |
+| Errore `10019` | Margine insufficiente |
+| Errore `10018` | Mercato chiuso (weekend) |
+| Errore `10016` | Stop troppo vicini al prezzo per le regole del broker |
+| Dopo un riavvio non riparte | Al passo [7] l'accesso automatico non è stato attivato: rilancia `INSTALLA.bat` e rispondi **S** |
 
-Tutto quello che succede viene scritto anche in **`bot.log`** nella cartella del programma: in caso di problemi manda quel file.
+In caso di problemi manda il file **`C:\SeersCopier\bot.log`** (o uno screenshot della finestra nera).
 
----
+## Sicurezza
 
-## Alternativa: leggere il canale con un account Telegram (se non sei admin)
-
-Se non puoi aggiungere un bot al canale, il programma può leggere con un account iscritto:
-1. Su <https://my.telegram.org> → *API development tools* crea un'app e copia **api_id** e **api_hash**.
-2. In `config.json` lascia `"bot_token": ""` e compila `"api_id"` (numero) e `"api_hash"`.
-3. Lancia `python bot.py --list`: chiede numero di telefono, codice (arriva nell'app Telegram) ed eventuale password, poi mostra gli ID dei canali.
-4. Il login resta nel file `seersfx.session`: **non condividerlo**, dà accesso all'account.
+- `C:\SeersCopier\config.json` contiene **token del bot** e **password del conto MT5**: non condividerlo.
+- La password di Windows per l'accesso automatico è salvata **cifrata** da Windows (strumento ufficiale Microsoft *Autologon*).
+- Il bot Telegram può solo **leggere** il canale: non può scrivere né modificare niente se gli togli i permessi.

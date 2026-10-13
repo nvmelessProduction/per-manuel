@@ -17,19 +17,20 @@ Gli aggiornamenti vengono applicati al segnale a cui il messaggio **risponde** (
 
 ## Installazione sulla VPS Windows
 
-👉 Guida passo-passo completa: [INSTALLAZIONE.md](INSTALLAZIONE.md)
+👉 **Guida passo-passo completa: [INSTALLAZIONE.md](INSTALLAZIONE.md)**
 
-1. Installa **Python 3.12 (64-bit)** da python.org (spunta "Add Python to PATH").
-2. Installa e apri **MetaTrader 5**, fai login sul conto e attiva il pulsante **Algo Trading**.
-3. Nella cartella del progetto: `pip install -r requirements.txt`
-4. Su Telegram crea un bot con **@BotFather** (`/newbot`), copia il token e aggiungi il bot come **amministratore** del canale.
-5. Copia `config.example.json` in `config.json` e compila `telegram.bot_token` e `telegram.channel`
-   (ID numerico del canale, es. `-1001234567890`: lo vedi nell'indirizzo di web.telegram.org o con `python bot.py --list`).
-6. Avvia con `avvia.bat` (oppure `python bot.py`).
+In breve:
+1. Crea un bot con **@BotFather** su Telegram e copia il token.
+2. Sulla VPS scarica lo ZIP di questo repository (branch `telegram-mt5-copier`) ed estrailo.
+3. Doppio clic su **`INSTALLA.bat`**: installa Python, MetaTrader 5, le librerie, chiede i dati
+   (token, conto MT5, rischio), trova da solo l'ID del canale e il nome dell'oro sul broker,
+   imposta l'avvio automatico (anche dopo un riavvio della VPS) e avvia il programma.
 
-Se non sei admin del canale puoi usare un account Telegram iscritto al posto del bot (`api_id`/`api_hash`, vedi fondo di INSTALLAZIONE.md).
+Per cambiare i dati in seguito: `C:\SeersCopier\CONFIGURA.bat`.
 
-## Configurazione (`config.json` → `trading`)
+## Configurazione avanzata (`config.json` → `trading`)
+
+Le voci principali le imposta `CONFIGURA.bat`; le altre si possono modificare a mano in `C:\SeersCopier\config.json` (poi riavvia il programma).
 
 | Chiave | Significato |
 |---|---|

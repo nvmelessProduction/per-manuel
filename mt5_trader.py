@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import threading
+import time
 from types import SimpleNamespace
 
 from signal_parser import Signal, Update
@@ -19,6 +20,33 @@ except ImportError:  # permette di testare il parser anche fuori da Windows
     mt5 = None
 
 
+# Nomi alternativi usati dai broker per lo stesso strumento
+SYMBOL_ALTERNATIVES = {
+    "XAUUSD": ["GOLD"],
+    "XAGUSD": ["SILVER"],
+    "NAS100": ["USTEC", "US100", "NDX100", "NASDAQ"],
+    "GER40": ["DE40", "GER30", "DAX40", "DE30"],
+    "USOIL": ["WTI", "XTIUSD", "USOUSD"],
+}
+
+
+def find_broker_symbol(name: str) -> str | None:
+    """Trova il nome usato dal broker (es. XAUUSD -> XAUUSD.m, XAUUSD+, GOLD).
+
+    Preferisce simboli negoziabili, poi la corrispondenza esatta, poi il nome più corto."""
+    names = [name.upper()] + SYMBOL_ALTERNATIVES.get(name.upper(), [])
+    candidates = []
+    for s in mt5.symbols_get() or []:
+        up = s.name.upper()
+        for rank, n in enumerate(names):
+            # suffissi ammessi: XAUUSD.m, XAUUSD+, XAUUSD_i, XAUUSDm (minuscolo), non XAUUSDX
+            if up == n or (up.startswith(n) and len(up) <= len(n) + 4 and not s.name[len(n)].isupper()):
+                tradable = s.trade_mode != 0  # 0 = SYMBOL_TRADE_MODE_DISABLED
+                candidates.append((not tradable, rank, up != n, len(up), s.name))
+                break
+    return min(candidates)[-1] if candidates else None
+
+
 class Trader:
     def __init__(self, mt5_cfg: dict, trading_cfg: dict, state_file: str = "state.json"):
         self.mt5_cfg = mt5_cfg
@@ -29,25 +57,40 @@ class Trader:
         self.lock = threading.Lock()
         # state = {"signals": {msg_id: {"symbol", "side", "tickets": [...], "entry": float}}, "last_signal": msg_id}
         self.state = {"signals": {}, "last_signal": None}
+        self._symbol_cache: dict[str, str] = {}
         self._load_state()
 
     # ------------------------------------------------------------------ setup
-    def connect(self) -> None:
+    def connect(self, attempts: int = 6) -> None:
         if mt5 is None:
             raise RuntimeError("Libreria MetaTrader5 non installata (pip install MetaTrader5, solo Windows).")
-        kwargs = {}
+        kwargs = {"timeout": 120000}
         if self.mt5_cfg.get("path"):
             kwargs["path"] = self.mt5_cfg["path"]
         if self.mt5_cfg.get("login"):
             kwargs["login"] = int(self.mt5_cfg["login"])
             kwargs["password"] = self.mt5_cfg.get("password", "")
             kwargs["server"] = self.mt5_cfg.get("server", "")
-        if not mt5.initialize(**kwargs):
-            raise RuntimeError(f"mt5.initialize() fallito: {mt5.last_error()}")
+        # Dopo un riavvio della VPS il terminale può metterci un po' a partire: riprovo
+        for i in range(1, attempts + 1):
+            if mt5.initialize(**kwargs) and mt5.account_info() is not None:
+                break
+            log.warning("Connessione a MT5 non riuscita (%s), tentativo %d/%d", mt5.last_error(), i, attempts)
+            mt5.shutdown()
+            time.sleep(10)
+        else:
+            raise RuntimeError(f"Impossibile collegarsi a MT5: {mt5.last_error()}")
         info = mt5.account_info()
         log.info("Connesso a MT5: conto %s (%s), saldo %.2f %s", info.login, info.server, info.balance, info.currency)
         if not mt5.terminal_info().trade_allowed:
             log.warning("ATTENZIONE: 'Algo Trading' è disattivato nel terminale MT5, gli ordini verranno rifiutati.")
+
+    def ensure_connected(self) -> None:
+        """Se il terminale si è chiuso o ha perso la connessione, mi ricollego."""
+        if mt5.terminal_info() is None or mt5.account_info() is None:
+            log.warning("Connessione a MT5 persa, mi ricollego...")
+            mt5.shutdown()
+            self.connect()
 
     def shutdown(self) -> None:
         if mt5 is not None:
@@ -70,8 +113,16 @@ class Trader:
 
     # ------------------------------------------------------------------ util
     def broker_symbol(self, symbol: str) -> str:
-        mapped = self.cfg.get("symbol_map", {}).get(symbol, symbol)
-        return mapped + self.cfg.get("symbol_suffix", "")
+        if symbol in self.cfg.get("symbol_map", {}):
+            return self.cfg["symbol_map"][symbol] + self.cfg.get("symbol_suffix", "")
+        if self.cfg.get("symbol_suffix"):
+            return symbol + self.cfg["symbol_suffix"]
+        if symbol not in self._symbol_cache:
+            found = find_broker_symbol(symbol)
+            if found and found != symbol:
+                log.info("Simbolo %s -> %s sul broker", symbol, found)
+            self._symbol_cache[symbol] = found or symbol
+        return self._symbol_cache[symbol]
 
     def _calc_lots(self, sym: str, info, order_type: int, entry: float, sl: float, legs: int) -> float:
         """Lotto per singola gamba (una gamba per ogni TP)."""
@@ -124,6 +175,7 @@ class Trader:
             if self.has_signal(msg_id):
                 log.info("Segnale %s già eseguito, ignoro", msg_id)
                 return
+            self.ensure_connected()
             self._open_signal(msg_id, sig)
 
     def _open_signal(self, msg_id: int, sig: Signal) -> None:
@@ -239,6 +291,7 @@ class Trader:
             rec = self.state["signals"].get(str(msg_id))
             if not rec:
                 return
+            self.ensure_connected()
             pos, orders = self._positions(rec)
             digits = mt5.symbol_info(rec["symbol"]).digits
             items = [(p, True) for p in pos] + [(o, False) for o in orders]
@@ -263,6 +316,7 @@ class Trader:
             if not rec:
                 log.info("Aggiornamento ricevuto ma nessun segnale aperto a cui applicarlo")
                 return
+            self.ensure_connected()
             pos, orders = self._positions(rec)
             log.info("Aggiornamento per segnale %s: %s (posizioni %d, pendenti %d)", sig_id, upd, len(pos), len(orders))
             if self.dry_run and rec.get("dry_run"):
