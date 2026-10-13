@@ -103,6 +103,10 @@ Link (oppure premi INVIO per installare MetaTrader 5 standard):
 
 Poi lo scarica e lo installa da solo (2-5 minuti). Si può aprire e chiudere da solo: è normale.
 
+Poi crea una **copia di MetaTrader 5 tutta per il copiatore** in `C:\SeersCopier\MT5`, con il suo conto e i suoi dati.
+Se sulla VPS c'è già un altro MetaTrader (anche con un altro bot che ci lavora sopra), **non viene toccato**.
+Anche Python e le librerie del copiatore sono separati (`C:\SeersCopier\venv`).
+
 ### [5] Configurazione — *qui ti fa le domande*
 
 **1/4 TELEGRAM**

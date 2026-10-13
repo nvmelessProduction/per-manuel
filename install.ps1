@@ -9,6 +9,9 @@ $ProgressPreference = 'SilentlyContinue'
 
 $InstallDir = 'C:\SeersCopier'
 $TaskName = 'SeersCopier'
+$VenvPy = "$InstallDir\venv\Scripts\python.exe"
+$Mt5Dir = "$InstallDir\MT5"
+$Terminal = "$Mt5Dir\terminal64.exe"
 $PythonUrl = 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe'
 $Mt5Url = 'https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe'
 $AutologonUrl = 'https://download.sysinternals.com/files/AutoLogon.zip'
@@ -33,9 +36,10 @@ function Fail($text) {
 }
 
 function Stop-Bot {
+    # Ferma SOLO il copiatore (processi lanciati da C:\SeersCopier), non altri bot Python sulla VPS
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='cmd.exe'" |
-        Where-Object { $_.CommandLine -like '*bot.py*' -or $_.CommandLine -like '*avvia.bat*' } |
+        Where-Object { $_.CommandLine -like "*$InstallDir\bot.py*" -or $_.CommandLine -like "*$InstallDir\avvia.bat*" } |
         ForEach-Object { Invoke-CimMethod -InputObject $_ -MethodName Terminate | Out-Null }
 }
 
@@ -74,7 +78,7 @@ if (-not $Reconfigure) {
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
     $src = $PSScriptRoot
     if ((Resolve-Path $src).Path.TrimEnd('\') -ne $InstallDir) {
-        $keep = @('config.json', 'state.json', 'bot.log', '*.session')
+        $keep = @('config.json', 'state.json', 'bot.log', '*.session', 'venv', 'MT5')
         Get-ChildItem -Path $src -Exclude $keep | Copy-Item -Destination $InstallDir -Recurse -Force
     }
     Get-ChildItem -Path $InstallDir -Recurse | Unblock-File
@@ -94,19 +98,20 @@ if (-not $Reconfigure) {
     }
     Ok $py
 
-    # --- 3. Librerie
-    Step 3 'Librerie Python (telethon, MetaTrader5)'
+    # --- 3. Librerie, in un ambiente Python separato (non tocca altri programmi Python della VPS)
+    Step 3 'Librerie Python (ambiente separato in C:\SeersCopier\venv)'
     $ErrorActionPreference = 'Continue'  # pip scrive avvisi su stderr: non devono fermare lo script
-    & $py -m pip install --upgrade pip --quiet --disable-pip-version-check
-    & $py -m pip install -r "$InstallDir\requirements.txt" --quiet --disable-pip-version-check
+    if (-not (Test-Path $VenvPy)) { & $py -m venv "$InstallDir\venv" }
+    & $VenvPy -m pip install --upgrade pip --quiet --disable-pip-version-check
+    & $VenvPy -m pip install -r "$InstallDir\requirements.txt" --upgrade --quiet --disable-pip-version-check
     $ErrorActionPreference = 'Stop'
     if ($LASTEXITCODE -ne 0) { Fail 'installazione delle librerie non riuscita (controlla la connessione internet)' }
     Ok 'librerie installate'
 
     # --- 4. MetaTrader 5
     Step 4 'MetaTrader 5'
-    $terminal = Find-Terminal
-    if (-not $terminal) {
+    $foundTerminal = Find-Terminal
+    if (-not $foundTerminal) {
         Write-Host '    Se il tuo broker ha un suo MetaTrader 5, incolla qui il link per scaricarlo'
         Write-Host '    (dal sito del broker, tasto destro sul pulsante "Scarica MT5" -> Copia link).'
         $url = Read-Host '    Link (oppure premi INVIO per installare MetaTrader 5 standard)'
@@ -116,17 +121,24 @@ if (-not $Reconfigure) {
         Download $url $mt5Exe
         $p = Start-Process $mt5Exe -ArgumentList '/auto' -PassThru
         $p.WaitForExit()
-        for ($i = 0; $i -lt 120 -and -not $terminal; $i++) { Start-Sleep 5; $terminal = Find-Terminal }
-        if (-not $terminal) { Fail 'installazione di MetaTrader 5 non riuscita' }
+        for ($i = 0; $i -lt 120 -and -not $foundTerminal; $i++) { Start-Sleep 5; $foundTerminal = Find-Terminal }
+        if (-not $foundTerminal) { Fail 'installazione di MetaTrader 5 non riuscita' }
         Start-Sleep 10
-        Get-Process terminal64 -ErrorAction SilentlyContinue | Stop-Process -Force
+        Get-Process terminal64 -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $foundTerminal } | Stop-Process -Force
     }
-    Ok $terminal
+
+    # Copia di MetaTrader 5 dedicata al copiatore (modalita portable): ha il suo conto e i suoi dati,
+    # cosi non tocca altri MetaTrader/bot gia presenti sulla VPS.
+    if (-not (Test-Path $Terminal)) {
+        Write-Host '    Creo una copia di MetaTrader 5 dedicata al copiatore...'
+        $srcDir = Split-Path $foundTerminal
+        robocopy $srcDir $Mt5Dir /E /NFL /NDL /NJH /NJS /NP /XD bases logs MQL5 profiles Tester tester /XF accounts.dat *.log | Out-Null
+        if (-not (Test-Path $Terminal)) { Fail "copia di MetaTrader 5 non riuscita in $Mt5Dir" }
+    }
+    Ok "MetaTrader 5 del copiatore: $Terminal"
 } else {
     Stop-Bot
-    $py = Find-Python
-    $terminal = Find-Terminal
-    if (-not $py -or -not $terminal) { Fail 'programma non installato: lancia prima INSTALLA.bat' }
+    if (-not (Test-Path $VenvPy) -or -not (Test-Path $Terminal)) { Fail 'programma non installato: lancia prima INSTALLA.bat' }
 }
 
 # --- 5. Configurazione guidata
@@ -138,7 +150,7 @@ if (-not $Reconfigure -and (Test-Path "$InstallDir\config.json")) {
     $doWizard = $ans -match '^[sSyY]'
 }
 if ($doWizard) {
-    & $py "$InstallDir\setup_wizard.py" --terminal $terminal
+    & $VenvPy "$InstallDir\setup_wizard.py" --terminal $Terminal
     if ($LASTEXITCODE -ne 0) { Fail 'configurazione non completata. Rilancia CONFIGURA.bat' }
 }
 

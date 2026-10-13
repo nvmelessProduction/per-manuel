@@ -67,6 +67,8 @@ class Trader:
         kwargs = {"timeout": 120000}
         if self.mt5_cfg.get("path"):
             kwargs["path"] = self.mt5_cfg["path"]
+        if self.mt5_cfg.get("portable"):
+            kwargs["portable"] = True  # copia di MT5 dedicata, con i suoi dati nella sua cartella
         if self.mt5_cfg.get("login"):
             kwargs["login"] = int(self.mt5_cfg["login"])
             kwargs["password"] = self.mt5_cfg.get("password", "")

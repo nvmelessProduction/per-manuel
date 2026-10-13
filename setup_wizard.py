@@ -10,6 +10,7 @@ import argparse
 import getpass
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -81,14 +82,29 @@ def setup_telegram(old: dict) -> dict:
     print("Serve il bot creato con @BotFather (comando /newbot), che deve essere")
     print("AMMINISTRATORE del canale dei segnali.\n")
     while True:
-        token = ask("Incolla il token del bot", old.get("bot_token") or None)
+        raw = ask("Incolla il token del bot", old.get("bot_token") or None)
+        # accetta anche testo in più copiato da BotFather (es. "HTTP API: 123:ABC...")
+        m = re.search(r"\d{6,}:[A-Za-z0-9_-]{30,}", raw)
+        if not m:
+            print("  -> Questo non sembra un token (formato: 1234567890:AAH...). Ricopialo da @BotFather.")
+            continue
+        token = m.group(0)
         api = BotApi(token)
         try:
             me = api.call("getMe", timeout=20)
             break
-        except Exception:
-            print("  -> Token non valido o internet non raggiungibile. Ricopialo da @BotFather.")
-            old = {}
+        except RuntimeError as e:
+            if "401" in str(e) or "Unauthorized" in str(e):
+                print("  -> Telegram dice che il token non è valido. Ricopialo da @BotFather.")
+            else:
+                print(f"  -> Errore da Telegram: {e}")
+        except Exception as e:
+            print(f"  -> Non riesco a collegarmi a Telegram: {type(e).__name__}: {e}")
+            if "CERTIFICATE" in str(e).upper():
+                print("     (problema di certificati SSL: chiudi e rilancia l'installazione, che li aggiorna)")
+            else:
+                print("     Controlla che la VPS abbia internet e che un antivirus/firewall non blocchi Python.")
+        old = {}
     print(f"  OK, bot: @{me['username']}")
     api.call("deleteWebhook", timeout=20)
 
@@ -142,7 +158,7 @@ def start_terminal_with_login(path: str, login: int, password: str, server: str)
                 "KeepPrivate=1\nNewsEnable=0\n"
                 "[Experts]\nAllowLiveTrading=1\nAllowDllImport=0\nEnabled=1\nAccount=0\nProfile=0\n")
     kill_terminal(path)
-    subprocess.Popen([path, f"/config:{ini}"])
+    subprocess.Popen([path, "/portable", f"/config:{ini}"])
     time.sleep(25)
     try:
         os.remove(ini)  # contiene la password
@@ -166,7 +182,7 @@ def setup_mt5(old: dict, terminal: str | None):
         server = ask("Server (es. ICMarketsSC-Demo)", old.get("server"))
         print("\nAvvio MetaTrader 5 e faccio il login, attendi circa 30 secondi...")
         start_terminal_with_login(path, login, password, server)
-        ok = mt5.initialize(path=path, login=login, password=password, server=server, timeout=120000)
+        ok = mt5.initialize(path=path, login=login, password=password, server=server, timeout=120000, portable=True)
         if ok and mt5.account_info() is not None:
             break
         print(f"\n  -> Login non riuscito: {mt5.last_error()}")
@@ -189,7 +205,7 @@ def setup_mt5(old: dict, terminal: str | None):
     if not hedging:
         print("\n  ATTENZIONE: il conto è di tipo NETTING (non hedging): userò una sola posizione per segnale.")
 
-    return mt5, {"path": path, "login": login, "password": password, "server": server}, hedging
+    return mt5, {"path": path, "portable": True, "login": login, "password": password, "server": server}, hedging
 
 
 def setup_trading(mt5, old: dict, hedging: bool) -> dict:

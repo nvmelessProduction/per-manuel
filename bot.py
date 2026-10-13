@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import json
 import logging
+import ssl
 import sys
 import time
 import urllib.error
@@ -95,15 +96,29 @@ def start_trader(cfg: dict):
 
 
 # ---------------------------------------------------------------- modalità BOT (Bot API)
+def _ssl_context() -> ssl.SSLContext:
+    # Su Windows Server appena installato spesso mancano i certificati radice che servono
+    # per api.telegram.org: uso quelli di certifi, che sono sempre completi.
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
 class BotApi:
     def __init__(self, token: str):
         self.base = f"https://api.telegram.org/bot{token}/"
+        self.ssl = _ssl_context()
 
     def call(self, method: str, timeout: int = 70, **params):
         req = urllib.request.Request(self.base + method, data=json.dumps(params).encode(),
                                      headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            data = json.load(r)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout, context=self.ssl) as r:
+                data = json.load(r)
+        except urllib.error.HTTPError as e:  # Telegram risponde con un errore (es. 401 token errato)
+            data = json.load(e)
         if not data.get("ok"):
             raise RuntimeError(f"Telegram {method}: {data}")
         return data["result"]

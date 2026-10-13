@@ -7,3 +7,4 @@ bot.log
 __pycache__/
 .venv/
 mt5_avvio.ini
+MT5/
