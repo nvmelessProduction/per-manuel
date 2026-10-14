@@ -55,6 +55,17 @@ class TestParser(unittest.TestCase):
     def test_incoherent_levels_rejected(self):
         self.assertIsNone(parse_signal(SEGNALE.replace("Stop Loss: 4180", "Stop Loss: 4165")))
 
+    def test_direction_only(self):
+        s = parse_signal("🔴 VENDI ORO")
+        self.assertEqual((s.side, s.symbol, s.sl, s.tps), ("SELL", "XAUUSD", None, []))
+        self.assertFalse(s.complete)
+        self.assertEqual(parse_signal("🟢 COMPRA ORO ora").side, "BUY")
+        self.assertTrue(parse_signal(SEGNALE).complete)
+
+    def test_profit_message_is_not_signal(self):
+        self.assertIsNone(parse_signal("Siamo in profitto di +40 pips, metti BE"))
+        self.assertIsNone(parse_signal("ORO in vendita: 55 pips a favore"))
+
     def test_update_is_not_signal(self):
         self.assertIsNone(parse_signal(AGGIORNAMENTO))
         self.assertIsNone(parse_signal(DISCLAIMER))

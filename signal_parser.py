@@ -42,14 +42,14 @@ DASH = r"\s*[-–—/]\s*"
 class Signal:
     side: str  # "BUY" o "SELL"
     symbol: str  # simbolo standard (es. XAUUSD), prima della mappatura broker
-    entry_low: float
-    entry_high: float
-    sl: float
+    entry_low: float | None = None
+    entry_high: float | None = None
+    sl: float | None = None  # None = non (ancora) indicato nel messaggio
     tps: list[float] = field(default_factory=list)
 
     @property
-    def entry_mid(self) -> float:
-        return (self.entry_low + self.entry_high) / 2
+    def complete(self) -> bool:
+        return self.sl is not None and bool(self.tps)
 
 
 @dataclass
@@ -94,7 +94,10 @@ def _find_side(t: str) -> str | None:
 
 
 def parse_signal(text: str) -> Signal | None:
-    """Ritorna un Signal se il messaggio è un segnale completo e coerente, altrimenti None."""
+    """Ritorna un Signal se il messaggio contiene una direzione e uno strumento (es. "VENDI ORO").
+
+    Basta "COMPRA ORO" / "VENDI ORO": stop loss, take profit e zona d'ingresso sono facoltativi
+    (il canale a volte li aggiunge dopo, modificando il messaggio). Se ci sono, devono essere coerenti."""
     t = _normalize(text)
 
     side = _find_side(t)
@@ -103,30 +106,27 @@ def parse_signal(text: str) -> Signal | None:
         return None
 
     m = re.search(r"STOP\s*LOSS\s*[:=]?\s*" + NUM, t) or re.search(r"\bSL\s*[:=]?\s*" + NUM, t)
-    if not m:
-        return None
-    sl = _to_float(m.group(1))
+    sl = _to_float(m.group(1)) if m else None
 
     tps = [_to_float(x) for x in re.findall(r"(?:TAKE\s*PROFIT|\bTP)\s*\d*\s*[:=]\s*" + NUM, t)]
-    if not tps:
-        return None
 
+    low = high = None
     m = re.search(r"(?:INGRESSO|ENTRATA|ENTRY)[^0-9\n]*" + NUM + r"(?:" + DASH + NUM + r")?", t)
-    if not m:
-        return None
-    a = _to_float(m.group(1))
-    b = _to_float(m.group(2)) if m.group(2) else a
-    low, high = min(a, b), max(a, b)
+    if m:
+        a = _to_float(m.group(1))
+        b = _to_float(m.group(2)) if m.group(2) else a
+        low, high = min(a, b), max(a, b)
 
-    # Controllo di coerenza dei livelli
-    if side == "SELL":
-        if not (sl > high and all(tp < low for tp in tps)):
+    # Controllo di coerenza dei livelli presenti
+    sell = side == "SELL"
+    tps.sort(reverse=sell)  # TP1 = il più vicino
+    if sl is not None and tps and not (all(sl > tp for tp in tps) if sell else all(sl < tp for tp in tps)):
+        return None
+    if low is not None:
+        if sl is not None and not (sl > high if sell else sl < low):
             return None
-        tps.sort(reverse=True)  # TP1 è il più vicino
-    else:
-        if not (sl < low and all(tp > high for tp in tps)):
+        if tps and not (all(tp < low for tp in tps) if sell else all(tp > high for tp in tps)):
             return None
-        tps.sort()
 
     return Signal(side=side, symbol=symbol, entry_low=low, entry_high=high, sl=sl, tps=tps)
 

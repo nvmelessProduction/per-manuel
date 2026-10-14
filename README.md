@@ -19,13 +19,11 @@ Legge i segnali dal canale Telegram (es. SEERS.FX) e li apre automaticamente su 
 
 | Messaggio sul canale | Azione su MT5 |
 |---|---|
-| `VENDI/COMPRA ORO (XAUUSD)` + zona d'ingresso + SL + TP1/TP2 | Apre **una posizione per ogni TP** (stesso SL). Se il prezzo è già in zona → ordine a mercato, altrimenti ordine limit sul bordo della zona |
-| Segnale **modificato** dopo l'invio | Aggiorna SL/TP delle posizioni già aperte |
-| "metti in sicurezza parte dei profitti" / "parziale" | Chiude la posizione del TP1 (o il `partial_close_percent` se ce n'è solo una) |
-| **Gestione automatica al TP1** (modalità consigliata) | Apre **1 posizione** con TP = TP2 (minimo 0,02 lotti). Quando il prezzo tocca il TP1 chiude il `partial_close_percent` (50%) e poi, a scelta: **stop a pareggio** (`management: "tp1_be"`) oppure **trailing stop** di `trailing_pips` pips (`management: "tp1_trailing"`). Se il canale scrive prima "metti in sicurezza", fa la stessa cosa subito |
-| "porta lo stop a pareggio" / "BE" / "break even" | Sposta lo SL al prezzo d'ingresso (+ `breakeven_offset_points`) |
-| "sposta lo stop a 4165" | Sposta lo SL a 4165 |
-| "chiudi" / "chiudiamo" / "close" | Chiude tutto e cancella i pendenti |
+| `VENDI ORO` / `COMPRA ORO` (anche **senza** livelli) | Apre **subito a mercato** 1 posizione (minimo 0,02 lotti) |
+| Livelli (SL / TP) aggiunti **modificando** il messaggio o in un **messaggio nuovo** entro 15 minuti | Imposta SL e TP (TP = ultimo TP) sulla posizione già aperta, **senza aprirne un'altra** |
+| — (automatico) | A **+40 pips** (`partial_pips`) dal prezzo di apertura reale chiude il **50%** e porta lo stop **esattamente al prezzo di entrata** (oppure trailing stop con `management: "tp1_trailing"`) |
+| "siamo in profitto…, metti BE", "metti in sicurezza…", "sposta lo stop…" | **Ignorati** (`channel_updates: "close_only"`): la gestione la fa il bot |
+| "chiudi" / "chiudiamo" / "close" | Chiude tutto |
 
 Gli aggiornamenti vengono applicati al segnale a cui il messaggio **risponde** (reply); se non è una risposta, all'ultimo segnale aperto.
 

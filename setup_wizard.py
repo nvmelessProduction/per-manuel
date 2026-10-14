@@ -226,8 +226,8 @@ def setup_trading(mt5, old: dict, hedging: bool) -> dict:
 
     title("4/4  RISCHIO E MODALITÀ")
     options = [
-        "1 posizione con TP al TP2: al TP1 chiude una parte (es. 50%) e mette lo stop a PAREGGIO",
-        "1 posizione con TP al TP2: al TP1 chiude una parte (es. 50%) e avvia un TRAILING STOP",
+        "1 posizione a mercato: dopo X pips di profitto chiude una parte (es. 50%) e porta lo stop al PREZZO DI ENTRATA",
+        "1 posizione a mercato: dopo X pips di profitto chiude una parte (es. 50%) e avvia un TRAILING STOP",
     ]
     if hedging:
         options.append("2 posizioni separate: una chiude al TP1, l'altra al TP2")
@@ -237,8 +237,15 @@ def setup_trading(mt5, old: dict, hedging: bool) -> dict:
     extra = {"management": management}
     tps = 2 if management == "two_positions" else 1
     if management != "two_positions":
-        extra["partial_close_percent"] = ask_number("Percentuale da chiudere al TP1", old.get("partial_close_percent", 50), 1, 99)
+        print("  (sull'oro 1 pip = 0,10$: 40 pips = 4$)")
+        extra["partial_trigger"] = "pips"
+        extra["partial_pips"] = ask_number("Dopo quanti pips di profitto dall'apertura chiudere una parte", old.get("partial_pips", 40), 1, 10000)
+        extra["partial_close_percent"] = ask_number("Percentuale da chiudere", old.get("partial_close_percent", 50), 1, 99)
         print("  (per poter chiudere una parte, il lotto minimo aperto sarà 0,02)")
+        # il resto della posizione va esattamente al prezzo di entrata; i messaggi del canale
+        # tipo "siamo in profitto, metti BE" vengono ignorati (vale solo "chiudi")
+        extra.update({"breakeven_offset_pips": 0, "entry_mode": "market", "use_pending_orders": False,
+                      "channel_updates": "close_only"})
     if management == "tp1_trailing":
         print("  Nota: sull'oro 1 pip = 0,10$  ->  3 pips = 0,30$ (molto stretto, circa lo spread).")
         extra["trailing_pips"] = ask_number("Distanza del trailing stop in pips", old.get("trailing_pips", 3), 0.5, 1000)
@@ -284,9 +291,11 @@ DEFAULT_TRADING = {
     "dry_run": True, "magic": 260412,
     "lot_mode": "risk", "risk_percent": 1.0, "fixed_lot": 0.01, "max_lot_per_leg": 1.0, "max_tps": 2,
     "symbol_map": {}, "symbol_suffix": "",
-    "entry_tolerance_points": 200, "use_pending_orders": True, "pending_expiry_minutes": 120,
+    "entry_tolerance_points": 200, "use_pending_orders": False, "pending_expiry_minutes": 120,
     "deviation_points": 50, "breakeven_offset_points": 50, "partial_close_percent": 50,
     "management": "tp1_be", "trailing_pips": 3, "trailing_step_pips": 1, "pip_size": None,
+    "partial_trigger": "pips", "partial_pips": 40, "breakeven_offset_pips": 0, "entry_mode": "market",
+    "channel_updates": "close_only", "merge_levels_minutes": 15,
     "max_signal_age_minutes": 15,
 }
 
@@ -320,10 +329,10 @@ def main() -> int:
     print(f"  Oro:        {trading['symbol_map']['XAUUSD']}")
     print(f"  Lotto:      " + (f"{trading['risk_percent']}% del conto" if trading["lot_mode"] == "risk"
                                 else f"fisso {trading['fixed_lot']}"))
+    at = f"a +{trading.get('partial_pips', 40):g} pips chiude il {trading.get('partial_close_percent', 50):g}%"
     print("  Gestione:   " + {
-        "tp1_be": f"1 posizione, al TP1 chiude il {trading.get('partial_close_percent', 50):g}% e mette a pareggio",
-        "tp1_trailing": f"1 posizione, al TP1 chiude il {trading.get('partial_close_percent', 50):g}% "
-                        f"e trailing stop di {trading.get('trailing_pips', 3):g} pips",
+        "tp1_be": f"1 posizione a mercato, {at} e stop al prezzo di entrata",
+        "tp1_trailing": f"1 posizione a mercato, {at} e trailing stop di {trading.get('trailing_pips', 3):g} pips",
         "two_positions": "2 posizioni (TP1 e TP2)",
     }[trading.get("management", "two_positions")])
     print(f"  Modalità:   {'PROVA (nessun ordine reale)' if trading['dry_run'] else 'REALE'}")
