@@ -62,6 +62,15 @@ class TestParser(unittest.TestCase):
         self.assertEqual(parse_signal("🟢 COMPRA ORO ora").side, "BUY")
         self.assertTrue(parse_signal(SEGNALE).complete)
 
+    def test_result_messages_are_not_signals(self):
+        self.assertIsNone(parse_signal("SEERSFX · TARGET CENTRATO\nORO (COMPRA): 180 pips\nIncassa tutto o metà e porta gli altri ingressi a pareggio."))
+        self.assertIsNone(parse_signal("SEERSFX · TARGET CENTRATO\nORO (VENDI): 125 pips\nOttimo lavoro"))
+        self.assertIsNone(parse_signal("SEERSFX · AGGIORNAMENTO\nOperazione in corso\nORO in vendita: 70 pips a favore"))
+
+    def test_short_signal_with_price(self):
+        s = parse_signal("SEERSFX · AGGIORNAMENTO\n\nGold sell 4184")
+        self.assertEqual((s.side, s.symbol, s.entry_low, s.entry_high), ("SELL", "XAUUSD", 4184, 4184))
+
     def test_profit_message_is_not_signal(self):
         self.assertIsNone(parse_signal("Siamo in profitto di +40 pips, metti BE"))
         self.assertIsNone(parse_signal("ORO in vendita: 55 pips a favore"))

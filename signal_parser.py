@@ -72,9 +72,15 @@ def _normalize(text: str) -> str:
     return text.upper().replace("’", "'")
 
 
+_SIDE_WORDS = {"VENDI", "VENDERE", "SELL", "SHORT", "COMPRA", "COMPRARE", "ACQUISTA", "BUY", "LONG"}
+
+# Messaggi di risultato/aggiornamento: "TARGET CENTRATO ORO (COMPRA): 180 pips", "40 pips a favore"...
+_NOT_A_SIGNAL = re.compile(r"TARGET|CENTRAT|INCASSA|\bPIPS?\b|PROFITT|A FAVORE|OPERAZIONE IN CORSO|CHIUS|AGGIORNAMENTO")
+
+
 def _find_symbol(t: str) -> str | None:
     m = re.search(r"\(\s*([A-Z][A-Z0-9]{2,9})\s*\)", t)
-    if m:
+    if m and m.group(1) not in _SIDE_WORDS:
         return m.group(1)
     m = re.search(r"\b([A-Z]{3}(?:USD|EUR|JPY|GBP|CHF|CAD|AUD|NZD))\b", t)
     if m:
@@ -112,10 +118,18 @@ def parse_signal(text: str) -> Signal | None:
 
     low = high = None
     m = re.search(r"(?:INGRESSO|ENTRATA|ENTRY)[^0-9\n]*" + NUM + r"(?:" + DASH + NUM + r")?", t)
+    # formato corto: "GOLD SELL 4184", "VENDI ORO 4184", "BUY XAUUSD @ 4170"
+    sides = r"(?:VENDI|SELL|COMPRA|BUY)"
+    syms = r"(?:ORO|GOLD|XAUUSD|\(XAUUSD\))"
+    m = m or re.search(rf"(?:{syms}\s+{sides}|{sides}\s+{syms})\s*@?\s*" + NUM + r"(?:" + DASH + NUM + r")?", t)
     if m:
         a = _to_float(m.group(1))
         b = _to_float(m.group(2)) if m.group(2) else a
         low, high = min(a, b), max(a, b)
+
+    # un messaggio di risultato ("target centrato", "pips a favore") non è un segnale
+    if sl is None and not tps and low is None and _NOT_A_SIGNAL.search(t):
+        return None
 
     # Controllo di coerenza dei livelli presenti
     sell = side == "SELL"

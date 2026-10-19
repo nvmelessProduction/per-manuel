@@ -195,6 +195,21 @@ class Trader:
                     return
             self._open_signal(msg_id, sig)
 
+    def price_in_zone(self, sig: Signal) -> bool:
+        """Il prezzo attuale è dentro la zona d'ingresso (± tolleranza) e non oltre SL/TP1?"""
+        if sig.entry_low is None:
+            return False
+        with self.lock:
+            self.ensure_connected()
+            sym = self.broker_symbol(sig.symbol)
+            if not mt5.symbol_select(sym, True):
+                return False
+            info, tick = mt5.symbol_info(sym), mt5.symbol_info_tick(sym)
+            tol = float(self.cfg.get("entry_tolerance_points", 200)) * info.point
+            price = tick.ask if sig.side == "BUY" else tick.bid
+            log.info("Prezzo attuale %s, zona d'ingresso %s - %s (tolleranza %s)", price, sig.entry_low, sig.entry_high, tol)
+            return sig.entry_low - tol <= price <= sig.entry_high + tol
+
     def _recent_without_levels(self, sig: Signal) -> str | None:
         window = float(self.cfg.get("merge_levels_minutes", 15)) * 60
         sym = self.broker_symbol(sig.symbol)

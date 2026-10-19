@@ -52,7 +52,8 @@ def make_handler(trader, max_age: int):
         if not msg.text.strip():
             return
         log.info("%s messaggio %s:\n%s", "Modificato" if msg.edited else "Nuovo", msg.id, msg.text)
-        too_old = time.time() - msg.date > max_age
+        age = time.time() - msg.date
+        too_old = age > max_age
 
         sig = parse_signal(msg.text)
         if sig:
@@ -61,10 +62,15 @@ def make_handler(trader, max_age: int):
                 if msg.edited:
                     trader.update_levels(msg.id, sig)
                 return
-            # Un segnale vecchio (o modificato molto dopo) non va aperto in ritardo
+            # Segnale non recente (es. arrivato tutto insieme dopo un riavvio): lo apro solo se
+            # il prezzo è ancora nella zona d'ingresso, così non entro a prezzi ormai lontani.
             if too_old:
-                log.warning("Segnale %s troppo vecchio, non lo apro", msg.id)
-                return
+                if trader.price_in_zone(sig):
+                    log.info("Segnale %s di %.0f minuti fa: il prezzo è ancora nella zona d'ingresso, apro", msg.id, age / 60)
+                else:
+                    log.warning("Segnale %s di %.0f minuti fa e prezzo fuori dalla zona d'ingresso: non lo apro",
+                                msg.id, age / 60)
+                    return
             trader.open_signal(msg.id, sig)
             return
 
@@ -173,7 +179,7 @@ def run_bot_mode(cfg: dict, list_only: bool) -> None:
                 handle(Incoming(
                     id=post["message_id"],
                     text=post.get("text") or post.get("caption") or "",
-                    date=post["date"],
+                    date=post.get("edit_date") or post["date"],
                     reply_to=(post.get("reply_to_message") or {}).get("message_id"),
                     edited=edited,
                 ))
@@ -218,7 +224,7 @@ async def run_user_mode(cfg: dict, list_only: bool) -> None:
     def on_event(edited: bool):
         async def _h(event):
             m = event.message
-            await asyncio.to_thread(handle, Incoming(m.id, m.message or "", m.date.timestamp(),
+            await asyncio.to_thread(handle, Incoming(m.id, m.message or "", (m.edit_date or m.date).timestamp(),
                                                      m.reply_to_msg_id, edited))
         return _h
 
