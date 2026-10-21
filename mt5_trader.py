@@ -527,11 +527,13 @@ class Trader:
             self._breakeven(p)
         self._save_state()
 
-    def _trail(self, p) -> None:
+    def _trail(self, p, dist: float | None = None) -> None:
+        """Sposta lo stop a `dist` dal prezzo (default: trailing_pips), solo a favore."""
         info = mt5.symbol_info(p.symbol)
         tick = mt5.symbol_info_tick(p.symbol)
         pip = self.pip_size(info)
-        dist = float(self.cfg.get("trailing_pips", 3)) * pip
+        if dist is None:
+            dist = float(self.cfg.get("trailing_pips", 3)) * pip
         dist = max(dist, (info.trade_stops_level + 1) * info.point)  # distanza minima imposta dal broker
         step = float(self.cfg.get("trailing_step_pips", 1)) * pip
         buy = p.type == mt5.POSITION_TYPE_BUY
@@ -573,13 +575,19 @@ class Trader:
                 if rec.get("mode") == "pips_be_trail" and not rec.get("trailing") and rec.get("tp1"):
                     tick = mt5.symbol_info_tick(p.symbol)
                     buy = p.type == mt5.POSITION_TYPE_BUY
-                    if (buy and tick.bid >= rec["tp1"]) or (not buy and tick.ask <= rec["tp1"]):
-                        log.info("Posizione %s: TP1 %s raggiunto, avvio trailing stop di %s pips",
-                                 p.ticket, rec["tp1"], self.cfg.get("trailing_pips", 3))
+                    close_price = tick.bid if buy else tick.ask
+                    if (buy and close_price >= rec["tp1"]) or (not buy and close_price <= rec["tp1"]):
+                        # Il trailing parte dallo stop attuale (il pareggio) e da qui in poi lo stop
+                        # si muove di un pip per ogni pip che il mercato fa a favore.
+                        start_sl = p.sl or p.price_open
+                        rec["trail_dist"] = abs(close_price - start_sl)
+                        log.info("Posizione %s: TP1 %s raggiunto, parte il trailing dallo stop %s "
+                                 "(segue il prezzo a %.2f di distanza, solo a favore)",
+                                 p.ticket, rec["tp1"], start_sl, rec["trail_dist"])
                         rec["trailing"] = True
                         changed = True
                 if rec.get("trailing"):
-                    self._trail(p)
+                    self._trail(p, rec.get("trail_dist"))
         if changed:
             self._save_state()
 
@@ -605,6 +613,6 @@ class Trader:
             "tp1_be": "porta lo stop al prezzo di entrata (TP finale = ultimo TP)",
             "tp1_trailing": "avvia trailing stop di %s pips (TP finale = ultimo TP)" % trail,
             "pips_be_tp1": "porta lo stop al prezzo di entrata (TP finale = TP1)",
-            "pips_be_trail": "porta lo stop al prezzo di entrata; al TP1 parte il trailing stop di %s pips, "
-                             "senza TP" % trail,
+            "pips_be_trail": "porta lo stop al prezzo di entrata; dal TP1 lo stop segue il prezzo pip per pip, "
+                             "senza TP",
         }[self.management])

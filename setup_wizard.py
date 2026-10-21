@@ -232,7 +232,7 @@ def setup_trading(mt5, old: dict, hedging: bool) -> dict:
     options += [
         "1 posizione a mercato: dopo X pips chiude una parte e stop al PREZZO DI ENTRATA, TP finale = TP1",
         "1 posizione a mercato: dopo X pips chiude una parte e stop al PREZZO DI ENTRATA; "
-        "al TP1 parte un TRAILING STOP, senza TP",
+        "dal TP1 lo stop segue il prezzo pip per pip (solo a favore), senza TP",
     ]
     if hedging:
         options.append("2 posizioni separate: una chiude al TP1, l'altra al TP2")
@@ -252,7 +252,9 @@ def setup_trading(mt5, old: dict, hedging: bool) -> dict:
         # tipo "siamo in profitto, metti BE" vengono ignorati (vale solo "chiudi")
         extra.update({"breakeven_offset_pips": 0, "entry_mode": "market", "use_pending_orders": False,
                       "channel_updates": "close_only"})
-    if management in ("tp1_trailing", "pips_be_trail"):
+    if management == "pips_be_trail":
+        print("  Al TP1 il trailing parte dallo stop a pareggio e si muove di 1 pip per ogni pip a favore.")
+    if management == "tp1_trailing":
         print("  Nota: sull'oro 1 pip = 0,10$  ->  3 pips = 0,30$ (molto stretto, circa lo spread).")
         extra["trailing_pips"] = ask_number("Distanza del trailing stop in pips", old.get("trailing_pips", 3), 0.5, 1000)
 
@@ -340,8 +342,8 @@ def main() -> int:
         "tp1_be": f"1 posizione a mercato, {at} e stop al prezzo di entrata",
         "tp1_trailing": f"1 posizione a mercato, {at} e trailing stop di {trading.get('trailing_pips', 3):g} pips",
         "pips_be_tp1": f"1 posizione a mercato, {at} e stop al prezzo di entrata; TP finale = TP1",
-        "pips_be_trail": f"1 posizione a mercato, {at} e stop al prezzo di entrata; al TP1 trailing stop "
-                         f"di {trading.get('trailing_pips', 3):g} pips, senza TP",
+        "pips_be_trail": f"1 posizione a mercato, {at} e stop al prezzo di entrata; dal TP1 lo stop segue "
+                         f"il prezzo pip per pip (solo a favore), senza TP",
         "two_positions": "2 posizioni (TP1 e TP2)",
     }[trading.get("management", "two_positions")])
     print(f"  Modalità:   {'PROVA (nessun ordine reale)' if trading['dry_run'] else 'REALE'}")
