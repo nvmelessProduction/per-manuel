@@ -22,6 +22,7 @@ Legge i segnali dal canale Telegram (es. SEERS.FX) e li apre automaticamente su 
 | `VENDI ORO` / `COMPRA ORO` (anche **senza** livelli) | Apre **subito a mercato** 1 posizione (minimo 0,02 lotti) |
 | Livelli (SL / TP) aggiunti **modificando** il messaggio o in un **messaggio nuovo** entro 15 minuti | Imposta SL e TP (TP = ultimo TP) sulla posizione già aperta, **senza aprirne un'altra** |
 | — (automatico) | A **+40 pips** (`partial_pips`) dal prezzo di apertura reale chiude il **50%** e porta lo stop **esattamente al prezzo di entrata** (oppure trailing stop con `management: "tp1_trailing"`) |
+| — (modalità `management`) | `tp1_be`: +X pips → parziale + stop all'entrata, TP = TP2 · `tp1_trailing`: +X pips → parziale + trailing, TP = TP2 · `pips_be_tp1`: +X pips → parziale + stop all'entrata, **TP = TP1** · `pips_be_trail`: +X pips → parziale + stop all'entrata, **al TP1 parte il trailing stop** (solo a favore), **nessun TP** |
 | "siamo in profitto…, metti BE", "metti in sicurezza…", "sposta lo stop…" | **Ignorati** (`channel_updates: "close_only"`): la gestione la fa il bot |
 | "chiudi" / "chiudiamo" / "close" | Chiude tutto |
 

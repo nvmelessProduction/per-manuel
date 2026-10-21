@@ -47,6 +47,21 @@ def find_broker_symbol(name: str) -> str | None:
     return min(candidates)[-1] if candidates else None
 
 
+# Modalità a posizione singola (la gestione dopo l'apertura la fa il bot):
+#   tp1_be        +X pips: parziale + stop al prezzo di entrata          TP finale = ultimo TP
+#   tp1_trailing  +X pips: parziale + trailing stop                      TP finale = ultimo TP
+#   pips_be_tp1   +X pips: parziale + stop al prezzo di entrata          TP finale = TP1
+#   pips_be_trail +X pips: parziale + stop al prezzo di entrata; al TP1 parte il trailing stop, nessun TP
+SINGLE_MODES = ("tp1_be", "tp1_trailing", "pips_be_tp1", "pips_be_trail")
+
+
+def final_tp(mode: str, tps: list[float]) -> float:
+    """TP da mettere sulla posizione (0 = nessun TP)."""
+    if not tps or mode == "pips_be_trail":
+        return 0.0
+    return tps[0] if mode == "pips_be_tp1" else tps[-1]
+
+
 class Trader:
     def __init__(self, mt5_cfg: dict, trading_cfg: dict, state_file: str = "state.json"):
         self.mt5_cfg = mt5_cfg
@@ -62,7 +77,7 @@ class Trader:
         # "tp1_trailing": come sopra ma al posto del pareggio parte un trailing stop
         # "two_positions": una posizione per ogni TP
         self.management = trading_cfg.get("management", "two_positions")
-        self.single_mode = self.management in ("tp1_be", "tp1_trailing")
+        self.single_mode = self.management in SINGLE_MODES
         self._load_state()
 
     # ------------------------------------------------------------------ setup
@@ -256,7 +271,7 @@ class Trader:
         if single:
             # Una sola posizione con TP finale; la parziale + BE/trailing la gestisce il manager.
             # Lotto minimo = 2 x minimo del broker, così la chiusura parziale è sempre possibile.
-            tps = [sig.tps[-1] if sig.tps else 0.0]
+            tps = [final_tp(self.management, sig.tps)]
             min_lot = 2 * info.volume_min
         else:
             tps = sig.tps[: int(self.cfg.get("max_tps", len(sig.tps)))] or [0.0]
@@ -361,7 +376,7 @@ class Trader:
             return
         pos, orders = self._positions(rec)
         digits = mt5.symbol_info(rec["symbol"]).digits
-        single = rec.get("mode") in ("tp1_be", "tp1_trailing")
+        single = rec.get("mode") in SINGLE_MODES
         if sig.tps:
             rec["tp1"] = sig.tps[0]
         if sig.complete:
@@ -370,7 +385,7 @@ class Trader:
         items = [(p, True) for p in pos] + [(o, False) for o in orders]
         for item, is_position in items:
             if single:
-                tp = sig.tps[-1] if sig.tps else item.tp
+                tp = final_tp(rec["mode"], sig.tps) if sig.tps else item.tp
             else:
                 key = item.identifier if is_position else item.ticket
                 leg = rec["tickets"].index(key) + 1 if key in rec["tickets"] else 1
@@ -418,7 +433,7 @@ class Trader:
                     log.info("Cancello ordine pendente %s (il trade è già in gestione)", o.ticket)
                     self._cancel_order(o)
 
-            if rec.get("mode") in ("tp1_be", "tp1_trailing"):
+            if rec.get("mode") in SINGLE_MODES:
                 for p in pos:
                     if upd.partial_close and not rec.get("partial_done"):
                         # il canale dice di mettere in sicurezza prima del TP1: stessa gestione del TP1
@@ -530,7 +545,7 @@ class Trader:
         """Controlla le posizioni aperte: TP1 raggiunto -> parziale + pareggio/trailing."""
         changed = False
         for rec in self.state["signals"].values():
-            if rec.get("mode") not in ("tp1_be", "tp1_trailing") or rec.get("closed") or rec.get("dry_run"):
+            if rec.get("mode") not in SINGLE_MODES or rec.get("closed") or rec.get("dry_run"):
                 continue
             pos, orders = self._positions(rec)
             if not pos and not orders:
@@ -553,7 +568,17 @@ class Trader:
                         reason = f"TP1 {target} raggiunto"
                     if target and ((buy and close_price >= target) or (not buy and close_price <= target)):
                         self._secure(rec, p, reason)
-                elif rec.get("trailing"):
+                        p = (mt5.positions_get(ticket=p.ticket) or [p])[0]
+                # pips_be_trail: quando il prezzo arriva al TP1 parte il trailing stop (solo a favore)
+                if rec.get("mode") == "pips_be_trail" and not rec.get("trailing") and rec.get("tp1"):
+                    tick = mt5.symbol_info_tick(p.symbol)
+                    buy = p.type == mt5.POSITION_TYPE_BUY
+                    if (buy and tick.bid >= rec["tp1"]) or (not buy and tick.ask <= rec["tp1"]):
+                        log.info("Posizione %s: TP1 %s raggiunto, avvio trailing stop di %s pips",
+                                 p.ticket, rec["tp1"], self.cfg.get("trailing_pips", 3))
+                        rec["trailing"] = True
+                        changed = True
+                if rec.get("trailing"):
                     self._trail(p)
         if changed:
             self._save_state()
@@ -575,6 +600,11 @@ class Trader:
         threading.Thread(target=loop, daemon=True, name="manager").start()
         when = ("a +%s pips dall'apertura" % self.cfg.get("partial_pips", 40)
                 if self.cfg.get("partial_trigger", "pips") == "pips" else "al TP1")
-        log.info("Gestione automatica attiva: %s chiude il %s%% e %s", when, self.cfg.get("partial_close_percent", 50),
-                 "porta lo stop al prezzo di entrata" if self.management == "tp1_be"
-                 else "avvia trailing stop di %s pips" % self.cfg.get("trailing_pips", 3))
+        trail = self.cfg.get("trailing_pips", 3)
+        log.info("Gestione automatica attiva: %s chiude il %s%% e %s", when, self.cfg.get("partial_close_percent", 50), {
+            "tp1_be": "porta lo stop al prezzo di entrata (TP finale = ultimo TP)",
+            "tp1_trailing": "avvia trailing stop di %s pips (TP finale = ultimo TP)" % trail,
+            "pips_be_tp1": "porta lo stop al prezzo di entrata (TP finale = TP1)",
+            "pips_be_trail": "porta lo stop al prezzo di entrata; al TP1 parte il trailing stop di %s pips, "
+                             "senza TP" % trail,
+        }[self.management])
