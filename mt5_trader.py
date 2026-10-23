@@ -267,6 +267,10 @@ class Trader:
                         msg_id, price, sig.entry_low, sig.entry_high)
             return
 
+        if self.management == "market_limit":
+            self._open_market_limit(msg_id, sig, sym, info, tick, buy)
+            return
+
         single = self.single_mode
         if single:
             # Una sola posizione con TP finale; la parziale + BE/trailing la gestisce il manager.
@@ -373,6 +377,16 @@ class Trader:
         rec = self.state["signals"][sid]
         if rec.get("dry_run"):
             log.info("[DRY RUN] livelli del segnale %s: SL %s TP %s", sid, sig.sl, sig.tps)
+            return
+        if rec.get("mode") == "market_limit":
+            # gli stop sono fissi (100/50 pips dall'apertura): dal segnale prendo solo il TP1,
+            # che il manager mette su tutte e due le operazioni
+            if sig.tps:
+                rec["tp1"] = sig.tps[0]
+                log.info("Segnale %s: TP1 = %s per entrambe le operazioni", sid, sig.tps[0])
+            if sig.complete:
+                rec["levels_missing"] = False
+            self._save_state()
             return
         pos, orders = self._positions(rec)
         digits = mt5.symbol_info(rec["symbol"]).digits
@@ -547,6 +561,9 @@ class Trader:
         """Controlla le posizioni aperte: TP1 raggiunto -> parziale + pareggio/trailing."""
         changed = False
         for rec in self.state["signals"].values():
+            if rec.get("mode") == "market_limit" and not rec.get("closed") and not rec.get("dry_run"):
+                self._manage_market_limit(rec)
+                continue
             if rec.get("mode") not in SINGLE_MODES or rec.get("closed") or rec.get("dry_run"):
                 continue
             pos, orders = self._positions(rec)
@@ -592,7 +609,7 @@ class Trader:
             self._save_state()
 
     def start_manager(self, interval: float = 1.0) -> None:
-        if not self.single_mode:
+        if not self.single_mode and self.management != "market_limit":
             return
 
         def loop():
@@ -609,6 +626,14 @@ class Trader:
         when = ("a +%s pips dall'apertura" % self.cfg.get("partial_pips", 40)
                 if self.cfg.get("partial_trigger", "pips") == "pips" else "al TP1")
         trail = self.cfg.get("trailing_pips", 3)
+        if self.management == "market_limit":
+            c = self.cfg
+            log.info("Gestione automatica attiva: 1) mercato %s lotti, SL %s pips, a +%s pips chiude il %s%% e pareggio, "
+                     "TP=TP1 | 2) limit %s lotti a %s pips dallo stop, SL %s pips, a +%s pips chiude il %s%% e pareggio, "
+                     "TP=TP1", c.get("a_lot", 0.02), c.get("a_sl_pips", 100), c.get("a_partial_pips", 30),
+                     c.get("partial_close_percent", 50), c.get("b_lot", 0.04), c.get("b_offset_pips", 50),
+                     c.get("b_sl_pips", 50), c.get("b_partial_pips", 40), c.get("partial_close_percent", 50))
+            return
         log.info("Gestione automatica attiva: %s chiude il %s%% e %s", when, self.cfg.get("partial_close_percent", 50), {
             "tp1_be": "porta lo stop al prezzo di entrata (TP finale = ultimo TP)",
             "tp1_trailing": "avvia trailing stop di %s pips (TP finale = ultimo TP)" % trail,
@@ -616,3 +641,123 @@ class Trader:
             "pips_be_trail": "porta lo stop al prezzo di entrata; dal TP1 lo stop segue il prezzo pip per pip, "
                              "senza TP",
         }[self.management])
+
+    # ------------------------------------------------------------------ strategia "mercato + limit"
+    # 1) A MERCATO   a_lot (0,02): SL a a_sl_pips (100) dall'apertura, TP = TP1 del segnale;
+    #                a +a_partial_pips (30) chiude il 50% e porta lo stop all'entrata.
+    # 2) LIMIT       b_lot (0,04) a b_offset_pips (50) dallo stop della prima operazione;
+    #                SL a b_sl_pips (50) dall'apertura, TP = TP1 del segnale;
+    #                a +b_partial_pips (40) chiude il 50% e porta lo stop all'entrata.
+    # Finché non c'è stata la parziale il bot ricontrolla e rimette SL/TP giusti.
+    def _ml_levels(self, leg: str, buy: bool, open_price: float, pip: float, tp1) -> tuple[float, float]:
+        sl_pips = float(self.cfg.get("a_sl_pips", 100) if leg == "A" else self.cfg.get("b_sl_pips", 50))
+        sl = open_price - sl_pips * pip if buy else open_price + sl_pips * pip
+        return sl, (tp1 or 0.0)
+
+    def _open_market_limit(self, msg_id: int, sig: Signal, sym: str, info, tick, buy: bool) -> None:
+        pip, digits = self.pip_size(info), info.digits
+        tp1 = sig.tps[0] if sig.tps else None
+        a_lot = float(self.cfg.get("a_lot", 0.02))
+        b_lot = float(self.cfg.get("b_lot", 0.04))
+        dev = int(self.cfg.get("deviation_points", 50))
+
+        # --- 1) operazione a mercato
+        price = tick.ask if buy else tick.bid
+        sl_a, tp = self._ml_levels("A", buy, price, pip, tp1)
+        res = self._send({
+            "action": mt5.TRADE_ACTION_DEAL, "symbol": sym, "volume": a_lot,
+            "type": mt5.ORDER_TYPE_BUY if buy else mt5.ORDER_TYPE_SELL, "price": round(price, digits),
+            "sl": round(sl_a, digits), "tp": round(tp, digits), "deviation": dev, "magic": self.magic,
+            "comment": f"sfx{msg_id}-A", "type_time": mt5.ORDER_TIME_GTC,
+        })
+        if not self._ok(res):
+            log.error("Segnale %s: operazione a mercato non aperta, non piazzo il limit", msg_id)
+            return
+        a_ticket = res.order
+        if not self.dry_run:
+            p = (mt5.positions_get(ticket=a_ticket) or [None])[0]
+            if p is not None:
+                price = p.price_open  # prezzo reale di esecuzione
+                sl_a, _ = self._ml_levels("A", buy, price, pip, tp1)
+        log.info("Segnale %s: 1) %s %s %.2f lotti a mercato @ %s, SL %s, TP %s", msg_id, sig.side, sym, a_lot,
+                 price, round(sl_a, digits), tp1)
+
+        # --- 2) ordine limit a b_offset_pips dallo stop della prima operazione
+        off = float(self.cfg.get("b_offset_pips", 50)) * pip
+        # tra l'entrata e lo stop: per un BUY sopra lo stop, per un SELL sotto
+        limit_price = sl_a + off if buy else sl_a - off
+        sl_b, tp = self._ml_levels("B", buy, limit_price, pip, tp1)
+        res = self._send({
+            "action": mt5.TRADE_ACTION_PENDING, "symbol": sym, "volume": b_lot,
+            "type": mt5.ORDER_TYPE_BUY_LIMIT if buy else mt5.ORDER_TYPE_SELL_LIMIT,
+            "price": round(limit_price, digits), "sl": round(sl_b, digits), "tp": round(tp, digits),
+            "magic": self.magic, "comment": f"sfx{msg_id}-B", "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_RETURN,
+        })
+        b_ticket = res.order if self._ok(res) else None
+        log.info("Segnale %s: 2) %s LIMIT %.2f lotti @ %s, SL %s, TP %s%s", msg_id, sig.side, b_lot,
+                 round(limit_price, digits), round(sl_b, digits), tp1, "" if b_ticket is not None else " -> NON piazzato")
+
+        self.state["signals"][str(msg_id)] = {
+            "symbol": sym, "side": sig.side, "mode": "market_limit", "dry_run": self.dry_run,
+            "tickets": [t for t in (a_ticket, b_ticket) if t is not None],
+            "a_ticket": a_ticket, "b_ticket": b_ticket, "tp1": tp1, "levels_missing": not sig.complete,
+            "opened_at": time.time(), "a_partial": False, "b_partial": False, "closed": False,
+        }
+        self.state["last_signal"] = msg_id
+        self._save_state()
+
+    def _ensure_sltp(self, p, sl: float, tp: float) -> None:
+        info = mt5.symbol_info(p.symbol)
+        tol = info.point / 2
+        if abs((p.sl or 0) - sl) <= tol and abs((p.tp or 0) - tp) <= tol:
+            return
+        log.info("Posizione %s: correggo SL %s -> %s, TP %s -> %s", p.ticket, p.sl, round(sl, info.digits),
+                 p.tp, round(tp, info.digits))
+        self._send({"action": mt5.TRADE_ACTION_SLTP, "symbol": p.symbol, "position": p.ticket,
+                    "sl": round(sl, info.digits), "tp": round(tp, info.digits), "magic": self.magic})
+
+    def _manage_market_limit(self, rec: dict) -> None:
+        pos, orders = self._positions(rec)
+        if not pos and not orders:
+            rec["closed"] = True
+            self._save_state()
+            return
+        info = mt5.symbol_info(rec["symbol"])
+        pip = self.pip_size(info)
+        tick = mt5.symbol_info_tick(rec["symbol"])
+        tp1 = rec.get("tp1")
+        a_alive = False
+        for p in pos:
+            leg = "A" if p.identifier == rec.get("a_ticket") else "B"
+            a_alive |= leg == "A"
+            buy = p.type == mt5.POSITION_TYPE_BUY
+            done_key = "a_partial" if leg == "A" else "b_partial"
+            if not rec.get(done_key):
+                # prima della parziale: SL sempre a 100/50 pips dall'apertura reale, TP = TP1
+                sl, tp = self._ml_levels(leg, buy, p.price_open, pip, tp1)
+                self._ensure_sltp(p, sl, tp if tp1 else p.tp)
+                pips = float(self.cfg.get("a_partial_pips", 30) if leg == "A" else self.cfg.get("b_partial_pips", 40))
+                target = p.price_open + pips * pip if buy else p.price_open - pips * pip
+                close_price = tick.bid if buy else tick.ask
+                if (buy and close_price >= target) or (not buy and close_price <= target):
+                    log.info("Operazione %s (%s): +%g pips dall'apertura %s -> chiudo il %s%% e pareggio",
+                             leg, p.ticket, pips, p.price_open, self.cfg.get("partial_close_percent", 50))
+                    self._partial_close(p)
+                    rec[done_key] = True
+                    self._save_state()
+                    p = (mt5.positions_get(ticket=p.ticket) or [p])[0]
+                    self._ensure_sltp(p, p.price_open, tp1 or p.tp)
+            elif tp1 and abs((p.tp or 0) - tp1) > info.point / 2:
+                # TP1 arrivato dopo (messaggio modificato): lo metto anche dopo la parziale
+                self._ensure_sltp(p, p.sl, tp1)
+        for o in orders:
+            if not a_alive:
+                # la prima operazione è chiusa (TP1, pareggio o chiusura): il limit non serve più
+                log.info("Operazione 1 chiusa: cancello l'ordine limit %s", o.ticket)
+                self._cancel_order(o)
+            elif tp1 and abs((o.tp or 0) - tp1) > info.point / 2:
+                log.info("Ordine limit %s: imposto TP %s", o.ticket, tp1)
+                self._send({"action": mt5.TRADE_ACTION_MODIFY, "order": o.ticket, "price": o.price_open,
+                            "sl": o.sl, "tp": round(tp1, info.digits), "type_time": o.type_time,
+                            "expiration": o.time_expiration, "magic": self.magic})

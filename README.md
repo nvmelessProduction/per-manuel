@@ -23,6 +23,7 @@ Legge i segnali dal canale Telegram (es. SEERS.FX) e li apre automaticamente su 
 | Livelli (SL / TP) aggiunti **modificando** il messaggio o in un **messaggio nuovo** entro 15 minuti | Imposta SL e TP (TP = ultimo TP) sulla posizione già aperta, **senza aprirne un'altra** |
 | — (automatico) | A **+40 pips** (`partial_pips`) dal prezzo di apertura reale chiude il **50%** e porta lo stop **esattamente al prezzo di entrata** (oppure trailing stop con `management: "tp1_trailing"`) |
 | — (modalità `management`) | `tp1_be`: +X pips → parziale + stop all'entrata, TP = TP2 · `tp1_trailing`: +X pips → parziale + trailing, TP = TP2 · `pips_be_tp1`: +X pips → parziale + stop all'entrata, **TP = TP1** · `pips_be_trail`: +X pips → parziale + stop all'entrata, **dal TP1 lo stop parte dal pareggio e segue il prezzo pip per pip** (solo a favore), **nessun TP** |
+| — (`management: "market_limit"`) | **1)** a mercato `a_lot` (0,02), SL `a_sl_pips` (100) dall'apertura, TP = TP1; a +`a_partial_pips` (30) chiude il 50% e stop all'entrata · **2)** limit `b_lot` (0,04) a `b_offset_pips` (50) dallo stop della 1, SL `b_sl_pips` (50) dall'apertura, TP = TP1; a +`b_partial_pips` (40) chiude il 50% e stop all'entrata · prima della parziale SL/TP vengono ricontrollati e corretti di continuo · se la 1 si chiude, il limit non attivato viene cancellato |
 | "siamo in profitto…, metti BE", "metti in sicurezza…", "sposta lo stop…" | **Ignorati** (`channel_updates: "close_only"`): la gestione la fa il bot |
 | "chiudi" / "chiudiamo" / "close" | Chiude tutto |
 

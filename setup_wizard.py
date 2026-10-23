@@ -234,15 +234,31 @@ def setup_trading(mt5, old: dict, hedging: bool) -> dict:
         "1 posizione a mercato: dopo X pips chiude una parte e stop al PREZZO DI ENTRATA; "
         "dal TP1 lo stop segue il prezzo pip per pip (solo a favore), senza TP",
     ]
+    modes = ["tp1_be", "tp1_trailing", "pips_be_tp1", "pips_be_trail"]
     if hedging:
         options.append("2 posizioni separate: una chiude al TP1, l'altra al TP2")
-    modes = ["tp1_be", "tp1_trailing", "pips_be_tp1", "pips_be_trail"] + (["two_positions"] if hedging else [])
+        options.append("MERCATO + LIMIT: 0,02 a mercato (SL 100 pips) + limit 0,04 a 50 pips dallo stop (SL 50 pips), "
+                       "parziali + pareggio, TP = TP1")
+        modes += ["two_positions", "market_limit"]
     old_mode = modes.index(old["management"]) + 1 if old.get("management") in modes else 1
     choice = ask_choice("Come gestire ogni segnale?", options, old_mode if old_mode <= len(options) else 1)
     management = modes[choice - 1]
     extra = {"management": management}
     tps = 2 if management == "two_positions" else 1
-    if management != "two_positions":
+    if management == "market_limit":
+        print("\n  (sull'oro 1 pip = 0,10$: 100 pips = 10$)")
+        print("  Operazione 1, a mercato:")
+        extra["a_lot"] = ask_number("    Lotti", old.get("a_lot", 0.02), 0.01, 100)
+        extra["a_sl_pips"] = ask_number("    Stop loss in pips dall'apertura", old.get("a_sl_pips", 100), 1, 10000)
+        extra["a_partial_pips"] = ask_number("    Dopo quanti pips chiude il 50% e va a pareggio", old.get("a_partial_pips", 30), 1, 10000)
+        print("  Operazione 2, ordine limit:")
+        extra["b_lot"] = ask_number("    Lotti", old.get("b_lot", 0.04), 0.01, 100)
+        extra["b_offset_pips"] = ask_number("    A quanti pips dallo stop dell'operazione 1", old.get("b_offset_pips", 50), 1, 10000)
+        extra["b_sl_pips"] = ask_number("    Stop loss in pips dall'apertura", old.get("b_sl_pips", 50), 1, 10000)
+        extra["b_partial_pips"] = ask_number("    Dopo quanti pips chiude il 50% e va a pareggio", old.get("b_partial_pips", 40), 1, 10000)
+        extra.update({"partial_close_percent": 50, "breakeven_offset_pips": 0, "entry_mode": "market",
+                      "channel_updates": "close_only"})
+    elif management != "two_positions":
         print("  (sull'oro 1 pip = 0,10$: 40 pips = 4$)")
         extra["partial_trigger"] = "pips"
         extra["partial_pips"] = ask_number("Dopo quanti pips di profitto dall'apertura chiudere una parte", old.get("partial_pips", 40), 1, 10000)
@@ -258,25 +274,30 @@ def setup_trading(mt5, old: dict, hedging: bool) -> dict:
         print("  Nota: sull'oro 1 pip = 0,10$  ->  3 pips = 0,30$ (molto stretto, circa lo spread).")
         extra["trailing_pips"] = ask_number("Distanza del trailing stop in pips", old.get("trailing_pips", 3), 0.5, 1000)
 
+    trading = {}
     balance = mt5.account_info().balance
-    if sym and tick and tick.bid:
+    if management == "market_limit":
+        pass  # lotti fissi, già chiesti sopra
+    elif sym and tick and tick.bid:
         loss = abs(mt5.order_calc_profit(mt5.ORDER_TYPE_SELL, gold, sym.volume_min, tick.bid, tick.bid + 8) or 0)
         if loss:
             print(f"\nEsempio: con uno stop loss di 8$ (come nei segnali del canale) il minimo che il bot apre "
                   f"({2 * sym.volume_min:g} lotti in totale) rischia circa {2 * loss:.2f} = "
                   f"{2 * loss / balance * 100:.1f}% del conto.")
 
-    mode = ask_choice("\nCome calcolo il lotto?",
-                      ["Percentuale del conto (consigliato)", "Lotto fisso"], 1)
-    trading = {}
-    if mode == 1:
+    mode = 0 if management == "market_limit" else ask_choice(
+        "\nCome calcolo il lotto?", ["Percentuale del conto (consigliato)", "Lotto fisso"], 1)
+    if mode == 0:
+        pass
+    elif mode == 1:
         trading["lot_mode"] = "risk"
         trading["risk_percent"] = ask_number("Percentuale del conto da rischiare per segnale", old.get("risk_percent", 1.0), 0.1, 10)
         print("  (se il conto è troppo piccolo per quella percentuale, verrà aperto il lotto minimo)")
     else:
         trading["lot_mode"] = "fixed"
         trading["fixed_lot"] = ask_number("Lotto per ogni posizione", old.get("fixed_lot", 0.01), 0.01, 100)
-    trading["max_lot_per_leg"] = ask_number("Lotto massimo di sicurezza per posizione", old.get("max_lot_per_leg", 1.0), 0.01, 100)
+    if mode:
+        trading["max_lot_per_leg"] = ask_number("Lotto massimo di sicurezza per posizione", old.get("max_lot_per_leg", 1.0), 0.01, 100)
 
     real = ask_choice("\nModalità di funzionamento:",
                       ["PROVA - legge i segnali e scrive nel log cosa farebbe, NON apre ordini (consigliato i primi giorni)",
@@ -335,13 +356,18 @@ def main() -> int:
     print(f"  Canale:     {telegram['channel']}")
     print(f"  Conto MT5:  {mt5_cfg['login']} ({mt5_cfg['server']})")
     print(f"  Oro:        {trading['symbol_map']['XAUUSD']}")
-    print(f"  Lotto:      " + (f"{trading['risk_percent']}% del conto" if trading["lot_mode"] == "risk"
-                                else f"fisso {trading['fixed_lot']}"))
+    if trading.get("management") != "market_limit":
+        print(f"  Lotto:      " + (f"{trading['risk_percent']}% del conto" if trading["lot_mode"] == "risk"
+                                    else f"fisso {trading['fixed_lot']}"))
     at = f"a +{trading.get('partial_pips', 40):g} pips chiude il {trading.get('partial_close_percent', 50):g}%"
     print("  Gestione:   " + {
         "tp1_be": f"1 posizione a mercato, {at} e stop al prezzo di entrata",
         "tp1_trailing": f"1 posizione a mercato, {at} e trailing stop di {trading.get('trailing_pips', 3):g} pips",
         "pips_be_tp1": f"1 posizione a mercato, {at} e stop al prezzo di entrata; TP finale = TP1",
+        "market_limit": f"mercato {trading.get('a_lot', 0.02):g} (SL {trading.get('a_sl_pips', 100):g} pips, parziale a "
+                        f"+{trading.get('a_partial_pips', 30):g}) + limit {trading.get('b_lot', 0.04):g} a "
+                        f"{trading.get('b_offset_pips', 50):g} pips dallo stop (SL {trading.get('b_sl_pips', 50):g} pips, "
+                        f"parziale a +{trading.get('b_partial_pips', 40):g}), TP = TP1",
         "pips_be_trail": f"1 posizione a mercato, {at} e stop al prezzo di entrata; dal TP1 lo stop segue "
                          f"il prezzo pip per pip (solo a favore), senza TP",
         "two_positions": "2 posizioni (TP1 e TP2)",
